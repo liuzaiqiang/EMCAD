@@ -211,7 +211,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_save', type=str, default='') 
     opt = parser.parse_args()
 
-    for run in [2]:
+    for run in [1,2,3,4,5]:
         dict_plot = {'val': [], 'test': []}
         best = 0.0
         test_dice_at_best_val = 0.0
