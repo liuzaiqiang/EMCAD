@@ -17,7 +17,7 @@ parser.add_argument('--root_path', type=str,
 parser.add_argument('--volume_path', type=str,
                     default='./data/synapse/test_vol_h5', help='root dir for validation volume data')
 parser.add_argument('--dataset', type=str,
-                    default='1', help='experiment_name')
+                    default='Synapse', help='experiment_name')
 parser.add_argument('--list_dir', type=str,
                     default='./lists/lists_Synapse', help='list dir')
 parser.add_argument('--num_classes', type=int,
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     
     dataset_name = args.dataset
     dataset_config = {
-        '1': {
+        'Synapse': {
             'root_path': args.root_path,
             'volume_path': args.volume_path,
             'list_dir': args.list_dir,
@@ -114,15 +114,15 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_'+str(args.img_size)
     snapshot_path = snapshot_path + '_s'+str(args.seed) if args.seed!=1234 else snapshot_path
 
-    # if not os.path.exists(snapshot_path):  由于windows长路径限制，暂时注释，改为下面临时处理方案
-    #     os.makedirs(snapshot_path)
-
-    # === 简化后的 snapshot_path（Windows / Linux 通用）===
-    exp_name = f"run_seed{args.seed}"
-    snapshot_path = os.path.join("model_pth", exp_name)
-
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
+
+    # === 简化后的 snapshot_path（Windows / Linux 通用）===
+    # exp_name = f"run_seed{args.seed}"
+    # snapshot_path = os.path.join("model_pth", exp_name)
+    #
+    # if not os.path.exists(snapshot_path):
+    #     os.makedirs(snapshot_path)
     
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes, expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel, add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb, encoder=args.encoder, pretrain= not args.no_pretrain, pretrained_dir=args.pretrained_dir)
 
@@ -130,5 +130,5 @@ if __name__ == "__main__":
 
     print('Model successfully created.')
     
-    trainer = {'1': trainer_synapse,}
+    trainer = {'Synapse': trainer_synapse,}
     trainer[dataset_name](args, model, snapshot_path)
