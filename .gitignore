@@ -1,0 +1,26 @@
+# 数据集（强烈建议）
+data/
+data/**
+# 常见大文件
+*.npz
+*.h5
+*.nii
+*.nii.gz
+
+# 训练产物
+model_pth/
+pretrained_pth/
+runs/
+logs/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# PyCharm
+.idea/
+
+
+# Python
+__pycache__/
+*.pyc

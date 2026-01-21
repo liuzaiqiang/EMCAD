@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--volume_path', type=str,
                     default='./data/synapse/test_vol_h5_new', help='root dir for validation volume data')
 parser.add_argument('--dataset', type=str,
-                    default='1', help='experiment_name')
+                    default='Synapse', help='experiment_name')
 parser.add_argument('--num_classes', type=int,
                     default=9, help='output channel of network')
 parser.add_argument('--list_dir', type=str,
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     torch.cuda.manual_seed(args.seed)
 
     dataset_config = {
-        '1': {
+        'Synapse': {
             'Dataset': Synapse_dataset,
             'volume_path': args.volume_path,
             'list_dir': args.list_dir,
