@@ -17,6 +17,9 @@ from thop import profile
 from thop import clever_format
 from ptflops import get_model_complexity_info
 
+
+import matplotlib.pyplot as plt #add by lzq
+
 def powerset(seq):
     """
     Returns all the subsets of this set. This is a generator.
@@ -210,6 +213,10 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # Do with that image whatever you want to do.
                 fig_gt.savefig(test_save_path + '/' + case + '_' +str(ind) + '_gt.png', bbox_inches="tight", dpi=300)
                 fig_pred.savefig(test_save_path + '/' + case + '_' +str(ind) + '_pred.png', bbox_inches="tight", dpi=300)
+
+                plt.close(fig_gt)  #add by lzq
+                plt.close(fig_pred) #add by lzq
+
 
     else:
         input = torch.from_numpy(image).unsqueeze(
