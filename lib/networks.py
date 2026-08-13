@@ -60,8 +60,8 @@ class EMCADNet(nn.Module):
             channels=[2048, 1024, 512, 256]
         else:
             print('Encoder not implemented! Continuing with default encoder pvt_v2_b2.')
-            self.backbone = pvt_v2_b2()  
-            path = pretrained_dir + '/pvt_v2_b2.pth'
+            self.backbone = pvt_v2_b2()    # 创建编码器结构
+            path = pretrained_dir + '/pvt_v2_b2.pth'   # 编码器预训练权重
             channels=[512, 320, 128, 64]
             
         if pretrain==True and 'pvt_v2' in encoder:
