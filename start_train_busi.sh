@@ -86,15 +86,15 @@ do
   fi
 done
 
-# 仅PVTv2编码器执行预训练文件检查。
-# 注意：下一条if的现有原文混入了PowerShell/Windows路径片段，按Bash解析可能报语法或路径错误；本次只加注释，不改原命令。
+# 仅 PVTv2 编码器检查本地预训练权重。
 if [[ "${ENCODER}" == pvt_v2_* ]]; then
-  if [[ ! -f "$th = "D:\install\python_3.12.4\Scripts;$env:Path"{PRETRAINED_DIR}/${ENCODER}.pth" ]]; then
+  test -f "${PRETRAINED_DIR}/${ENCODER}.pth" || {
     echo "[ERROR] pretrained model not found:"
     echo "${PRETRAINED_DIR}/${ENCODER}.pth"
     exit 1
-  fi
+  }
 fi
+这与 ISIC、Polyp 脚本
 
 # 确保模型输出根目录存在。
 mkdir -p "${OUTPUT_DIR}"

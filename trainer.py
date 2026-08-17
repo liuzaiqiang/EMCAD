@@ -2,10 +2,8 @@
 # 本文件实现 Synapse 的训练闭环，是理解“数据如何经过模型并产生梯度”的核心入口。
 # 主链路：Synapse_dataset -> DataLoader -> EMCADNet 四个 logits -> 监督组合 ->
 # 0.3*交叉熵+0.7*Dice -> backward -> AdamW.step -> 整体病例验证 -> 保存权重。
-# 论文对应：第 3.3 节解释四个分割头、多阶段损失和输出聚合；第 4.1 节给出
-# Synapse 的 224x224、300 epoch、batch size 6、AdamW、lr/weight_decay=1e-4、
-# CE:Dice=0.3:0.7。mutation 对 4 个输出的 15 个非空子集逐一计算损失，
-# 是当前仓库代码中的监督实现细节；阅读时要与论文第 3.3 节的公式/描述对照。
+# 论文对应：第 3.3 节解释四个分割头、多阶段损失和输出聚合；第 4.1 节给出  Synapse 的 224x224、300 epoch、batch size 6、AdamW、lr/weight_decay=1e-4、CE:Dice=0.3:0.7。
+# mutation 对 4 个输出的 15 个非空子集逐一计算损失，是当前仓库代码中的监督实现细节；阅读时要与论文第 3.3 节的公式/描述对照。
 # 训练以二维切片为样本：[B,1,H,W]；验证以三维病例为样本：[1,D,H,W]，
 # val_single_volume 再逐切片送入网络，并按 8 个前景器官汇总 Dice。
 # ========================================================================
@@ -50,12 +48,10 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
         
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
-# 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，
-# 每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
+# 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
 def inference(args, model, best_performance):
 # 用完整体目录和 test_vol.txt 创建病例级数据集；单样本通常 image/label=[D,H,W]。
     db_test = Synapse_dataset(base_dir=args.volume_path, split="test_vol", list_dir=args.list_dir, nclass=args.num_classes)
-    
 # batch_size=1 表示每次评估一个病例；不打乱才能保持列表与日志顺序稳定。
     testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
 # 记录本轮需要处理的病例数，即 DataLoader 的迭代次数。
