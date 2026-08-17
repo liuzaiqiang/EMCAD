@@ -1,80 +1,142 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+# os 负责根据列表项构造 ACDC NPZ 文件路径。
 import os
+# random 用于训练阶段随机选择几何增强。
 import random
+# re 在当前活动代码中未调用；下方被注释的 volume 版本曾使用它解析切片名。
 import re  # 用于解析 case_019_sliceED_10.npz 这类文件名。2026.8.5 19:38新增
+# NumPy 用于 NPZ 读取、旋转翻转和数据类型转换。
 import numpy as np
+# PyTorch 把图像与标签数组转换为训练张量。
 import torch
+# ndimage.rotate 提供任意小角度旋转。
 from scipy import ndimage
+# zoom 将图像和标签缩放到网络输入尺寸。
 from scipy.ndimage.interpolation import zoom
+# 继承 Dataset 后可被 PyTorch DataLoader 索引。
 from torch.utils.data import Dataset
 
 
+# 同步执行 90 度倍数旋转与随机方向翻转。
 def random_rot_flip(image, label):
+    # 随机选择 0/90/180/270 度。
     k = np.random.randint(0, 4)
+    # 旋转图像。
     image = np.rot90(image, k)
+    # 以相同 k 旋转标签，保持像素对应。
     label = np.rot90(label, k)
+    # 随机选择高度轴或宽度轴。
     axis = np.random.randint(0, 2)
+    # 翻转图像并复制，消除负步长数组视图。
     image = np.flip(image, axis=axis).copy()
+    # 标签沿同一轴翻转并复制。
     label = np.flip(label, axis=axis).copy()
+    # 返回同步增强后的数组。
     return image, label
 
 
+# 同步执行 [-20,20) 度随机旋转。
 def random_rotate(image, label):
+    # 采样整数角度。
     angle = np.random.randint(-20, 20)
+    # 原版本对图像使用最近邻插值并保持原尺寸。
     image = ndimage.rotate(image, angle, order=0, reshape=False)
+    # 标签同样使用最近邻插值，保证类别值合法。
     label = ndimage.rotate(label, angle, order=0, reshape=False)
+    # 返回旋转后的样本对。
     return image, label
 
 
+# SLDGroup 早期版本的 ACDC 训练样本变换器。
 class RandomGenerator(object):
+    # output_size 是目标 [H,W]。
     def __init__(self, output_size):
+        # 保存目标尺寸。
         self.output_size = output_size
 
+    # 接收包含 image、label 的 NumPy 字典。
     def __call__(self, sample):
+        # 同时取出图像和标签。
         image, label = sample['image'], sample['label']
 
+        # 首次随机数大于 0.5 时执行离散旋转与翻转。
         if random.random() > 0.5:
+            # 同步增强图像和标签。
             image, label = random_rot_flip(image, label)
+        # 第一分支未命中时再次采样，大于 0.5 则执行小角度旋转。
         elif random.random() > 0.5:
+            # 同步旋转。
             image, label = random_rotate(image, label)
+        # 读取当前二维高宽。
         x, y = image.shape
+        # 与目标尺寸不同才缩放。
         if x != self.output_size[0] or y != self.output_size[1]:
+            # 连续 CT 用三次插值；行尾疑问是原代码注释，当前仅解释实际行为。
             image = zoom(image, (self.output_size[0] / x, self.output_size[1] / y), order=3)  # why not 3?
+            # 离散标签用最近邻插值。
             label = zoom(label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+        # 图像转 float32 并增加单通道维 [1,H,W]。
         image = torch.from_numpy(image.astype(np.float32)).unsqueeze(0)
+        # 标签先转 float32 张量，下一行再转 long。
         label = torch.from_numpy(label.astype(np.float32))
+        # 组装训练字典；long 标签供交叉熵使用。
         sample = {'image': image, 'label': label.long()}
+        # 返回变换后的样本。
         return sample
 
 
+# 早期 ACDC 数据集适配器；train/valid 读二维切片，其余划分按单个 NPZ 读取。
 class ACDCdataset(Dataset):
+    # base_dir 为数据根，list_dir 存划分列表，transform 仅训练时使用。
     def __init__(self, base_dir, list_dir, split, transform=None):
+        # 保存可选同步增强。
         self.transform = transform  # using transform in torch!
+        # 保存划分名称。
         self.split = split
+        # 读取 <list_dir>/<split>.txt 的全部行；原实现未显式关闭句柄，保持不变。
         self.sample_list = open(os.path.join(list_dir, self.split+'.txt')).readlines()
+        # 保存数据根目录。
         self.data_dir = base_dir
 
+    # 返回列表文件行数。
     def __len__(self):
+        # 每一行被视为一个可索引样本。
         return len(self.sample_list)
 
+    # 按索引加载一个 NPZ 样本。
     def __getitem__(self, idx):
+        # train/valid 文件存放于对应划分子目录。
         if self.split == "train" or self.split == "valid":
+            # 去除列表行末换行符。
             slice_name = self.sample_list[idx].strip('\n')
+            # 构造 <data_dir>/<split>/<slice_name> 路径。
             data_path = os.path.join(self.data_dir, self.split, slice_name)
+            # 读取 NPZ 容器。
             data = np.load(data_path)
+            # ACDC 键名约定为 img 和 label。
             image, label = data['img'], data['label']
+        # 其他划分直接在 data_dir 下查找列表项。
         else:
+            # 去除换行得到 volume 文件名。
             vol_name = self.sample_list[idx].strip('\n')
+            # 使用字符串格式构造路径，保持原实现。
             filepath = self.data_dir + "/{}".format(vol_name)
+            # 加载完整 NPZ。
             data = np.load(filepath)
+            # 读取图像与标签数组。
             image, label = data['img'], data['label']
 
+        # 先以 NumPy 字典封装。
         sample = {'image': image, 'label': label}
+        # 只有训练划分执行随机增强；验证/测试保持确定性。
         if self.transform and self.split == "train":
+            # 同步变换图像和标签。
             sample = self.transform(sample)
+        # 附加原始列表项作为病例/切片名称。
         sample['case_name'] = self.sample_list[idx].strip('\n')
+        # 返回样本字典。
         return sample
 
 
