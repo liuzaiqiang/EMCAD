@@ -387,7 +387,7 @@ def main():
         model = nn.DataParallel(model, device_ids=list(range(args.n_gpu)))
 
 # 交叉熵负责像素级 4 类分类。
-    ce_loss = CrossEntropyLoss()
+    rbce_loss = CrossEntropyLoss()
 # DiceLoss 内部 softmax，并对背景/RV/MYO/LV 四类求平均。
     dice_loss = DiceLoss(ACDC_NUM_CLASSES)
 # AdamW 更新全部可训练参数。
@@ -399,7 +399,7 @@ def main():
 # 仅 args.amp 且 CUDA 时启用梯度缩放；否则 scaler 透明地按普通精度执行。
     scaler = GradScaler(enabled=args.amp and device.type == "cuda")
 # TensorBoard 日志保存到本次实验的 tensorboard 子目录。
-    writer = SummaryWriter(os.path.join(snapshot_path, "tensorboard"))
+    writer = SummaryWriter(os.path.join(snapshot_path, "tensooard"))
 
 # 最好验证 Dice 从 -1 开始，确保第一次有效验证一定能保存 best.pth。
     best_dice = -1.0
