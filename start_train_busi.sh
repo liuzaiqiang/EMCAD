@@ -12,7 +12,7 @@ mkdir -p "${LOG_DIR}"
 
 # 可由外部覆盖的conda和Python入口；未覆盖时使用服务器默认值。
 CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad_251}"
+CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # conda初始化脚本存在才激活环境，否则使用当前shell已有环境。
@@ -94,7 +94,6 @@ if [[ "${ENCODER}" == pvt_v2_* ]]; then
     exit 1
   }
 fi
-这与 ISIC、Polyp 脚本
 
 # 确保模型输出根目录存在。
 mkdir -p "${OUTPUT_DIR}"

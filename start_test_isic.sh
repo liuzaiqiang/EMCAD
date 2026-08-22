@@ -11,7 +11,7 @@ mkdir -p "${LOG_DIR}"
 
 # conda和Python入口支持环境变量覆盖；conda初始化文件缺失时不激活环境。
 CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad_251}"
+CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then

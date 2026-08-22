@@ -6,7 +6,7 @@ set -euo pipefail
 #conda路径、环境名参数化
 # 这里是固定默认值，不读取同名外部环境变量；服务器安装位置或环境名变化时需要相应调整。
 CONDA_BASE="/base/mambaforge"
-CONDA_ENV_NAME="sld_emcad_251"
+CONDA_ENV_NAME="sld_emcad"
 
 
 # BASH_SOURCE[0] 指向当前脚本；进入其目录后取绝对路径，保证从任意工作目录启动都定位到本项目。

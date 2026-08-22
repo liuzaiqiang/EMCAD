@@ -1,5 +1,6 @@
 {
     "Codegeex.CompletionDelay": 1,
     "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "Codegeex.RepoIndex": true
 }

@@ -12,7 +12,7 @@ mkdir -p "${LOG_DIR}"
 
 # ${VAR:-default} 允许启动前用环境变量覆盖服务器默认 conda 和 Python 命令。
 CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad_251}"
+CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # 只有 conda 初始化脚本存在时才激活环境；不存在时继续使用当前 shell 的 Python 环境。

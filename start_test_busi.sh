@@ -12,7 +12,7 @@ mkdir -p "${LOG_DIR}"
 
 # 三个入口均可由同名环境变量覆盖，便于适配不同服务器的 conda 安装位置、环境名和 Python 命令。
 CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad_251}"
+CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # conda 初始化脚本存在时才加载并激活指定环境；不存在时沿用调用者当前的 Python 环境。
