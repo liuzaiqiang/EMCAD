@@ -47,11 +47,8 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset 生成监督组合；DiceLoss 计算多类软 Dice；两个 volume 函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 
-
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
 # 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
-
-
 def inference(args, model, best_performance):
     # 用完整体目录和 test_vol.txt 创建病例级数据集；单样本通常 image/label=[D,H,W]。
     db_test = Synapse_dataset(base_dir=args.volume_path, split="test_vol",
@@ -73,8 +70,7 @@ def inference(args, model, best_performance):
         image, label, case_name = sampled_batch["image"], sampled_batch["label"], sampled_batch['case_name'][0]
         # val_single_volume 会逐切片缩放到 [img_size,img_size]，前向推理、argmax，再还原原尺寸。
         # 返回长度 num_classes-1 的列表；每个元素是对应前景类别在该病例上的 Dice。
-        metric_i = val_single_volume(image, label, model, classes=args.num_classes,
-                                     patch_size=[args.img_size, args.img_size],
+        metric_i = val_single_volume(image, label, model, classes=args.num_classes, patch_size=[args.img_size, args.img_size],
                                      # case 用于日志语义；z_spacing 传入但当前 val_single_volume 的 Dice 路径不使用物理间距。
                                      case=case_name, z_spacing=args.z_spacing)
         # 把当前病例的 8 类 Dice 转为 NumPy 数组并累加到跨病例总和。
@@ -91,8 +87,6 @@ def inference(args, model, best_performance):
 
 
 # Synapse 训练主函数：args 提供配置，model 是已创建的 EMCADNet，snapshot_path 是本次实验目录。
-
-
 def trainer_synapse(args, model, snapshot_path):
     # 配置文件日志；每条记录带时分秒和毫秒，写入当前实验目录的 log.txt。
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
@@ -126,12 +120,10 @@ def trainer_synapse(args, model, snapshot_path):
         random.seed(args.seed + worker_id)
 
     # 构造训练批次：shuffle=True 每个 epoch 重排切片；pin_memory=True 可加快 CPU->GPU 拷贝。
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,
-                             num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
     # 下面两行原注释提示 Windows 多进程读取可能需要 num_workers=0；当前真正执行的是上面的 8。
     # windows下 num_workers需要改为0
     # trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,worker_init_fn=worker_init_fn)
-
     # 选择设备；虽然这里有 CPU 回退，入口 train_synapse.py 在此之前已经 model.cuda()，所以整体仍要求 CUDA。
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # 只有机器可见 GPU 数大于 1 且用户要求 n_gpu>1 时，才包裹数据并行。
@@ -153,8 +145,7 @@ def trainer_synapse(args, model, snapshot_path):
     # 这是保留的 SGD 备选方案，前导 # 使其不执行。
     # optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     # 当前实际优化器是 AdamW；weight decay=1e-4 与论文第 4.1 节设置一致。
-    optimizer = optim.AdamW(
-        model.parameters(), lr=base_lr, weight_decay=0.0001)
+    optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=0.0001)
     # TensorBoard 事件写入 snapshot_path/log，可用 total_loss 与 lr 曲线观察训练。
     writer = SummaryWriter(snapshot_path + '/log')
     # 全局迭代计数从 0 开始，每处理一个 batch 后加 1。
@@ -164,8 +155,7 @@ def trainer_synapse(args, model, snapshot_path):
     # 实际最大迭代数由 epoch 数乘每 epoch 批次数决定；不会使用 args.max_iterations。
     max_iterations = args.max_epochs * len(trainloader)
     # 写入每 epoch 批次数和预计总迭代数，便于核对训练是否完整。
-    logging.info("{} iterations per epoch. {} max iterations ".format(
-        len(trainloader), max_iterations))
+    logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
     # 历史最好验证 Dice；初始 0，后续大于等于它时覆盖 best.pth。
     best_performance = 0.0
     # tqdm 包装 epoch 范围，ncols=70 固定终端进度条宽度。
@@ -173,7 +163,6 @@ def trainer_synapse(args, model, snapshot_path):
 
     # 外层循环遍历 epoch_num=0..max_epoch-1。
     for epoch_num in iterator:
-
         # 内层循环逐批读取字典；i_batch 是当前 epoch 内的 batch 序号。
         for i_batch, sampled_batch in enumerate(trainloader):
             # DataLoader 堆叠后，image_batch 通常 [B,1,224,224]，label_batch 通常 [B,224,224]。
@@ -181,11 +170,9 @@ def trainer_synapse(args, model, snapshot_path):
             # 将图像和标签移到默认 GPU；squeeze(1) 只在标签含冗余通道维 [B,1,H,W] 时移除它。
             # CrossEntropyLoss 最终要求标签形状 [B,H,W]，每个值是 0..8 的类别索引。
             image_batch, label_batch = image_batch.cuda(), label_batch.squeeze(1).cuda()
-
             # 训练模式前向：EMCADNet 返回由粗到细的四个全分辨率 logits，均为 [B,9,224,224]。
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名 P 表示 prediction list。
             P = model(image_batch, mode='train')
-
             # 兼容只返回单张量的其他模型：统一包装为列表，后续监督代码只处理 list。
             if not isinstance(P, list):
                 # 单输出模型经包装后 len(P)=1。
@@ -211,12 +198,10 @@ def trainer_synapse(args, model, snapshot_path):
                     ss = [[-1]]
                 # 打印监督组合，便于确认本次实验究竟累加了多少项损失。
                 print(ss)
-
             # 当前 batch 的总损失从 0 开始；首次加 Tensor 后自动变为带梯度的标量 Tensor。
             loss = 0.0
             # 每个监督组内部采用 30% 交叉熵 + 70% Dice，与论文第 4.1 节一致。
             w_ce, w_dice = 0.3, 0.7
-
             # 遍历监督组合；mutation 为 16 次循环，其中空集不产生损失。
             for s in ss:
                 # 当前组合的聚合 logits 初始化为 0；加上第一个输出后成为 [B,9,H,W] Tensor。

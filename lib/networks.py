@@ -16,19 +16,19 @@ from lib.decoders import EMCAD
 # 模型总装入口：输入适配 -> 层级编码器 -> EMCAD 解码器 -> 四个分割头。
 # 论文对应：第4页 Fig.2(a)-(b)，整体架构说明见第5页 Sec.3.2。
 class EMCADNet(nn.Module):
-# num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
+    # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1,3,5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3, activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/'):
-# 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
+        # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
 
         # conv block to convert single channel to 3 channels
-# 医学 CT/灰度图通常为 1 通道，而 ImageNet 编码器期望 3 通道，因此建立可学习的 1->3 适配器。
+        # 医学 CT/灰度图通常为 1 通道，而 ImageNet 编码器期望 3 通道，因此建立可学习的 1->3 适配器。
         self.conv = nn.Sequential(
-# 1x1 卷积只混合通道，不改变 H、W；输出形状由 (B,1,H,W) 变为 (B,3,H,W)。
+            # 1x1 卷积只混合通道，不改变 H、W；输出形状由 (B,1,H,W) 变为 (B,3,H,W)。
             nn.Conv2d(1, 3, kernel_size=1),
-# 对新生成的 3 个通道做批归一化。
+            # 对新生成的 3 个通道做批归一化。
             nn.BatchNorm2d(3),
-# ReLU 为输入适配器加入非线性。
+            # ReLU 为输入适配器加入非线性。
             nn.ReLU(inplace=True)
         )
         
