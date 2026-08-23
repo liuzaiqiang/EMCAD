@@ -6,6 +6,9 @@ set -euo pipefail
 #conda路径、环境名参数化
 # 这里是固定默认值，不读取同名外部环境变量；服务器安装位置或环境名变化时需要相应调整。
 CONDA_BASE="/base/mambaforge"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+
+
 CONDA_ENV_NAME="sld_emcad"
 
 
@@ -20,7 +23,7 @@ mkdir -p "${LOG_DIR}"
 
 # 加载 conda 的 shell 函数后激活指定环境；任一步失败都会因 set -e 终止启动。
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV_NAME}"
+conda activate "${CONDA_ENV_PREFIX}"
 
 
 # 只向本进程及其子进程暴露编号0的GPU；PYTHONUNBUFFERED让训练日志尽快写入文件。

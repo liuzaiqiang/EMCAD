@@ -14,12 +14,14 @@ mkdir -p "${LOG_DIR}"
 
 # Synapse测试脚本使用固定conda安装位置和环境名，不读取外部覆盖值。
 CONDA_BASE="/base/mambaforge"
-CONDA_ENV_NAME="sld_emcad"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+
+
 
 
 # 加载conda shell函数并激活环境；失败会因set -e终止。
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV_NAME}"
+conda activate "${CONDA_ENV_PREFIX}"
 
 # 只暴露GPU0并关闭Python输出缓冲，便于实时查看测试日志。
 export CUDA_VISIBLE_DEVICES=0

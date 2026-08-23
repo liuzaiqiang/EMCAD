@@ -33,7 +33,7 @@ lib/__pycache__
 .tmp_pypdf
 .tmp
 .agents
-
+.codex_tmp
 
 *.pdf
-
+*.md
