@@ -35,7 +35,7 @@ from ptflops import get_model_complexity_info
 # 递归生成 seq 的全部子集；训练器用它构造 mutation supervision 的输出组合。
 def powerset(seq):
     """
-    Returns all the subsets of this set. This is a generator.
+        Returns all the subsets of this set. This is a generator.
     """
     # 空序列或单元素序列是递归终止条件。
     if len(seq) <= 1:

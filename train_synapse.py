@@ -61,17 +61,13 @@ parser.add_argument('--activation_mscb', type=str, default='relu6', help='activa
 parser.add_argument('--no_dw_parallel', action='store_true', default=False,
                     help='use this flag to disable depth-wise parallel convolutions')
 # 出现该旗标后，MSDC 多尺度分支用通道拼接；默认则逐元素相加。
-parser.add_argument('--concatenation', action='store_true', default=False,
-                    help='use this flag to concatenate feature maps in MSDC block')
+parser.add_argument('--concatenation', action='store_true', default=False, help='use this flag to concatenate feature maps in MSDC block')
 # 出现该旗标后不加载编码器预训练权重；注意“编码器架构”和“是否预训练”是两个独立选择。
-parser.add_argument('--no_pretrain', action='store_true', default=False,
-                    help='use this flag to turn off loading pretrained enocder weights')
+parser.add_argument('--no_pretrain', action='store_true', default=False,help='use this flag to turn off loading pretrained enocder weights')
 # PVT 预训练权重目录；EMCADNet 会按 encoder 名称拼接具体 .pth 文件名。
-parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/',
-                    help='path to pretrained encoder dir')
+parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/', help='path to pretrained encoder dir')
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
-parser.add_argument('--supervision', type=str, default='mutation',
-                    help='loss supervision: mutation, deep_supervision or last_layer')
+parser.add_argument('--supervision', type=str, default='mutation', help='loss supervision: mutation, deep_supervision or last_layer')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -167,13 +163,10 @@ if __name__ == "__main__":
     # 手工运行编号；若要真正区分多次运行，需要修改它或通过外部目录管理。
     run = 1
     # 拼出包含主干、卷积核、聚合方式、门控核、扩张倍数、激活和监督策略的实验标识。
-    args.exp = args.encoder + '_EMCAD_kernel_sizes_' + str(
-        args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
-        args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
-        run) + '_' + dataset_name + str(args.img_size)
+    args.exp = (args.encoder + '_EMCAD_kernel_sizes_' + str( args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef'
+                + str(args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(run) + '_' + dataset_name + str(args.img_size))
     # 构造权重保存目录；外层目录含 args.exp，内层再次记录主要结构超参数。
-    snapshot_path = "model_pth/{}/{}".format(args.exp, args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes)
-                                             + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef'
+    snapshot_path = "model_pth/{}/{}".format(args.exp, args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes)+ '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef'
                                              + str(args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str( run))
     # 把 Python 列表字符串中的括号和逗号空格清理掉，避免目录名出现 [1, 3, 5]。
     snapshot_path = snapshot_path.replace('[', '').replace(']', '').replace(', ', '_')
@@ -207,10 +200,8 @@ if __name__ == "__main__":
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。
-    model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
-                     expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
-                     add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+    model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes, expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
+                     add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb, encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()
