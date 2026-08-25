@@ -33,8 +33,7 @@ from thop import clever_format
 from ptflops import get_model_complexity_info
 
 # ============================== 本文件阅读总览 ==============================
-# 这个文件不是一个单一用途的“工具箱”，而是把 EMCAD 项目中几个不同阶段的
-# 公共小功能集中放在了一起。阅读时可以先按下面四条链路建立地图：
+# 这个文件不是一个单一用途的“工具箱”，而是把 EMCAD 项目中几个不同阶段的公共小功能集中放在了一起。阅读时可以先按下面四条链路建立地图：
 #
 # 1. 训练辅助链路：powerset -> 生成多级输出的监督组合；
 #    clip_gradient -> 在 optimizer.step() 之前限制梯度；
@@ -42,33 +41,20 @@ from ptflops import get_model_complexity_info
 #    AvgMeter -> 在终端显示近期 loss。
 #
 # 2. 标签和损失链路：one_hot_encoder / DiceLoss。
-#    网络的多分类输出通常是 [B,C,H,W] 的 logits，而标签通常是 [B,H,W]
-#    的整数类别图；DiceLoss 需要把后者转换为 [B,C,H,W] 的 one-hot 掩膜，
-#    然后逐类别计算 soft Dice loss。这里的 C 必须与网络输出通道数一致。
+#    网络的多分类输出通常是 [B,C,H,W] 的 logits，而标签通常是 [B,H,W]的整数类别图；
+#    DiceLoss 需要把后者转换为 [B,C,H,W] 的 one-hot 掩膜，然后逐类别计算 soft Dice loss。这里的 C 必须与网络输出通道数一致。
 #
 # 3. Synapse 病例评估链路：test_single_volume / val_single_volume。
-#    训练样本可以是二维切片，但一个病例往往是 [D,H,W] 的三维体数据；
-#    这两个函数负责把体数据逐切片送进二维网络，再把每张切片的预测拼回
-#    三维体，最后按前景类别计算 Dice、HD95、Jaccard 和 ASD（或只算 Dice）。
+#    训练样本可以是二维切片，但一个病例往往是 [D,H,W] 的三维体数据；这两个函数负责把体数据逐切片送进二维网络，再把每张切片的预测拼回三维体，最后按前景类别计算 Dice、HD95、Jaccard 和 ASD（或只算 Dice）。
 #
-# 4. 模型统计链路：CalParams / cal_params_flops / print_model_stats。
-#    它们只用于估计参数量、FLOPs 或 MACs，不参与训练，也不会提升模型精度。
-#
-# 下面的注释会尽量同时回答三件事：代码在项目哪一阶段被调用、输入输出的
-# 形状/类型是什么、为什么需要这一行。注释描述的是当前代码的真实行为；
-# 即使某处存在历史遗留写法或潜在边界条件，也只在注释中解释，不改变代码。
-# ============================================================================
+# 4. 模型统计链路：CalParams / cal_params_flops / print_model_stats。它们只用于估计参数量、FLOPs 或 MACs，不参与训练，也不会提升模型精度。
 
 # 递归生成 seq 的全部子集；训练器用它构造 mutation supervision 的输出组合。
-#
 # 调用位置：trainer.py 的 mutation supervision 分支会先构造 out_idxs=[0,1,2,3]，
-# 再调用 powerset(out_idxs)，得到四个输出头的所有非空组合。每个组合会把相应
-# 的 logits 相加并计算一次损失，因此该函数间接决定了 mutation 分支一轮 batch
-# 要计算多少条监督路径。四个元素共有 2^4=16 个子集，去掉空集后是 15 个。
-#
-# 为什么使用生成器：如果直接返回一个完整列表，短序列问题不大；使用 yield 可以
-# 让调用方逐个消费组合，避免为更长的序列一次性额外复制全部结果。这里的 seq
-# 通常是 Python list，返回的子集也是 list；函数不会修改传入的 seq。
+# 再调用 powerset(out_idxs)，得到四个输出头的所有非空组合。每个组合会把相应的 logits 相加并计算一次损失，因此该函数间接决定了 mutation 分支一轮 batch要计算多少条监督路径。四个元素共有 2^4=16 个子集，去掉空集后是 15 个。
+# 为什么使用生成器：
+# 如果直接返回一个完整列表，短序列问题不大；
+# 使用 yield 可以让调用方逐个消费组合，避免为更长的序列一次性额外复制全部结果。这里的 seq通常是 Python list，返回的子集也是 list；函数不会修改传入的 seq。
 def powerset(seq):
     """
         Returns all the subsets of this set. This is a generator.
@@ -95,17 +81,13 @@ def powerset(seq):
 # 按元素把所有参数梯度截断到 [-grad_clip, grad_clip]，避免极端梯度值。
 #
 # 调用位置：旧版/SLDGroup 息肉训练脚本在 loss.backward() 之后、
-# optimizer.step() 之前调用 clip_gradient(optimizer, opt.clip)。此时梯度已经
-# 写入每个 Parameter.grad，但参数还没有更新，所以这里可以安全地先处理梯度。
+# optimizer.step() 之前调用 clip_gradient(optimizer, opt.clip)。此时梯度已经写入每个 Parameter.grad，但参数还没有更新，所以这里可以安全地先处理梯度。
 #
-# 为什么需要梯度裁剪：某个 batch、某个尺度或某条深监督路径可能产生异常大的
-# 梯度；若直接交给优化器，单步参数变化可能过大，表现为 loss 突然爆炸、NaN，
-# 或训练被一个异常样本破坏。裁剪只能限制更新的输入，不能修复错误标签或不合理
-# 学习率，也不能保证梯度方向正确。
+# 为什么需要梯度裁剪：某个batch、某个尺度或某条深监督路径可能产生异常大的梯度；若直接交给优化器，单步参数变化可能过大，表现为 loss 突然爆炸、NaN，或训练被一个异常样本破坏。
+# 裁剪只能限制更新的输入，不能修复错误标签或不合理学习率，也不能保证梯度方向正确。
 #
-# 重要区别：当前实现是“逐元素裁剪”（element-wise clamp），每个梯度元素独立
-# 限制在 [-grad_clip, grad_clip]；它不是按整个梯度向量的 L2 范数裁剪。两者对
-# 梯度方向和大小的影响不同，阅读实验配置时不要把它们当成同一种策略。
+# 重要区别：当前实现是“逐元素裁剪”（element-wise clamp），每个梯度元素独立限制在 [-grad_clip, grad_clip]；
+# 它不是按整个梯度向量的 L2 范数裁剪。两者对梯度方向和大小的影响不同，阅读实验配置时不要把它们当成同一种策略。
 def clip_gradient(optimizer, grad_clip):
     """
         利用裁剪梯度技术标定不对准梯度
@@ -130,13 +112,15 @@ def clip_gradient(optimizer, grad_clip):
 
 # 按固定 epoch 周期计算学习率衰减因子并作用到优化器参数组。
 #
-# 调用位置：train_polyp_SLDGroup.py 在每个 epoch 开始处调用本函数，然后才进入
-# train(...)。它属于旧的阶梯式学习率策略；同一脚本随后还会在 epoch 末执行
-# CosineAnnealingLR，因此如果两个策略同时有效，学习率会叠加变化。
+# 调用位置：train_polyp_SLDGroup.py 在每个 epoch 开始处调用本函数，然后才进入train(...)。
+# 它属于旧的阶梯式学习率策略；同一脚本随后还会在 epoch 末执行CosineAnnealingLR，因此如果两个策略同时有效，学习率会叠加变化。
 #
-# 参数含义：optimizer 是待修改的优化器；init_lr 在当前实现中没有被使用；epoch
-# 是当前轮次；decay_epoch 表示每隔多少轮衰减一次；decay_rate 是每次衰减乘上的
-# 比例。按公式，epoch=0..29 时 decay=1，epoch=30..59 时 decay=decay_rate。
+# 参数含义：
+# optimizer 是待修改的优化器；
+# init_lr 在当前实现中没有被使用；
+# epoch  当前轮次；
+# decay_epoch 表示每隔多少轮衰减一次；
+# decay_rate 是每次衰减乘上的比例。按公式，epoch=0..29 时 decay=1，epoch=30..59 时 decay=decay_rate。
 #
 # 代码风险提示：这里使用 param_group['lr'] *= decay，而不是基于 init_lr 重新计算。
 # 如果调用方每个 epoch 都调用一次，且 epoch//decay_epoch 在同一阶段保持不变，
@@ -155,13 +139,11 @@ def adjust_lr(optimizer, init_lr, epoch, decay_rate=0.1, decay_epoch=30):
 
 # 维护标量的当前值、累计平均值和最近若干次记录。
 #
-# 调用位置：train_polyp_SLDGroup.py 创建 AvgMeter() 记录训练损失。每个原始 batch
-# 可能包含多个尺度更新，但旧脚本只在 rate==1 时调用 update；因此这里显示的是
-# 代码选择记录的那些 loss，不一定等于所有优化器 step 的严格平均值。
+# 调用位置：train_polyp_SLDGroup.py 创建 AvgMeter() 记录训练损失。每个原始 batch可能包含多个尺度更新，但旧脚本只在 rate==1 时调用 update；因此这里显示的是代码选择记录的那些 loss，不一定等于所有优化器 step 的严格平均值。
 #
-# 这个类同时维护两种“平均”：avg 是从 reset() 开始的全历史加权平均，show() 是
-# 最近 num 次记录的滑动平均。终端进度条通常使用 show()，因为短窗口能减少单个
-# batch 的噪声；最终汇总时可使用 avg。val、sum、count 等字段不是模型参数，只是
+# 这个类同时维护两种“平均”：
+# avg 是从 reset() 开始的全历史加权平均，
+# show() 是最近 num 次记录的滑动平均。终端进度条通常使用 show()，因为短窗口能减少单个batch 的噪声；最终汇总时可使用 avg。val、sum、count 等字段不是模型参数，只是
 # 日志统计状态，不会参与反向传播。
 class AvgMeter(object):
     # num 决定 show() 最多平均最近多少个张量值。
@@ -213,14 +195,10 @@ class AvgMeter(object):
 # 使用 THOP 计算给定 model 和实际 input_tensor 的 FLOPs/参数量并打印。
 #
 # 适用场景：在模型正式训练前，给一个已经构造好的网络和一份“代表性输入”，
-# 快速估计一次前向传播的计算量与参数量。它是实验记录/模型对比工具，不会计算
-# loss、不会调用 backward，也不会更新权重。input_tensor 的形状和设备必须与
-# model.forward() 的真实接口一致；如果网络要求 [B,1,H,W]，就不能随便传 [B,3,H,W]。
-#
-# THOP 是通过 forward hook 观察模块执行来估算 FLOPs，因此含有自定义算子、动态
-# 分支或多个输出时，统计值可能只是近似值。不同工具（THOP、ptflops）对一次乘加
-# 是否算 1 次或 2 次操作的口径也可能不同，论文中比较复杂度时要保持工具和输入
-# 尺寸一致。
+# 快速估计一次前向传播的计算量与参数量。它是实验记录/模型对比工具，不会计算loss、不会调用 backward，也不会更新权重。
+# input_tensor 的形状和设备必须与 model.forward() 的真实接口一致；如果网络要求 [B,1,H,W]，就不能随便传 [B,3,H,W]。
+# THOP 是通过 forward hook 观察模块执行来估算 FLOPs，因此含有自定义算子、动态分支或多个输出时，统计值可能只是近似值。
+# 不同工具（THOP、ptflops）对一次乘加是否算 1 次或 2 次操作的口径也可能不同，论文中比较复杂度时要保持工具和输入尺寸一致。
 def CalParams(model, input_tensor):
     """
     Usage:
@@ -244,18 +222,13 @@ def CalParams(model, input_tensor):
     print('[Statistics Information]\nFLOPs: {}\nParams: {}'.format(flops, params))
     
 # 把整数类别标签 [B,H,W] 转成张量 [B,C,H,W]。
+# 这个函数服务于多分类 Dice 计算：
+# CrossEntropyLoss 可以直接接收 [B,H,W] 的整数标签，但 Dice 需要对每个类别分别做交集，因此要把一个像素的类别编号转换为 C 个 0/1 通道。
+# 例如标签像素值为 2 时，one-hot 的四类通道应为 [0,0,1,0]。
 #
-# 这个函数服务于多分类 Dice 计算：CrossEntropyLoss 可以直接接收 [B,H,W] 的
-# 整数标签，但 Dice 需要对每个类别分别做交集，因此要把一个像素的类别编号转换
-# 为 C 个 0/1 通道。例如标签像素值为 2 时，one-hot 的四类通道应为 [0,0,1,0]。
-#
-# input_tensor 预期是整数类别图，常见形状为 [B,H,W]；返回值形状为 [B,C,H,W]，
-# 类型为 float32。返回浮点而不是 bool，是因为后续要和网络概率逐元素相乘并求和。
-# dataset == 'MMWHS' 是特殊分支：该数据集的标签值不是连续的 0,1,2,...，而是
-# [0,205,420,...] 这样的编码；其他数据集必须提供 n_classes，并且标签值连续。
-#
-# 当前 EMCAD 的 Synapse 训练路径主要使用 DiceLoss 类内部的同类逻辑；这个公开
-# 函数是通用/历史接口，trainer.py 虽然导入了它，但当前训练循环不一定直接调用。
+# input_tensor 预期是整数类别图，常见形状为 [B,H,W]；返回值形状为 [B,C,H,W]，类型为 float32。返回浮点而不是 bool，是因为后续要和网络概率逐元素相乘并求和。
+# dataset == 'MMWHS' 是特殊分支：该数据集的标签值不是连续的 0,1,2,...，而是 [0,205,420,...] 这样的编码；其他数据集必须提供 n_classes，并且标签值连续。
+# 当前 EMCAD 的 Synapse 训练路径主要使用 DiceLoss 类内部的同类逻辑；这个公开函数是通用/历史接口，trainer.py 虽然导入了它，但当前训练循环不一定直接调用。
 def one_hot_encoder(input_tensor,dataset,n_classes = None):
     # 暂存每个类别的单通道布尔掩膜。
     tensor_list = []
@@ -295,20 +268,18 @@ def one_hot_encoder(input_tensor,dataset,n_classes = None):
 
 # 多类别 soft Dice 损失；训练器将它与交叉熵按 0.7/0.3 加权。
 #
-# 调用位置：trainer.py 为 Synapse 构造 DiceLoss(num_classes)，在每个监督输出上
-# 调用 dice_loss(logits, label, softmax=True)；其他多分类训练代码也可以复用它。
-# 它是 nn.Module，因此可以像普通损失函数一样放入训练循环，但它本身没有可学习
-# 参数。它的输入通常是：
+# 调用位置：trainer.py 为 Synapse 构造 DiceLoss(num_classes)，在每个监督输出上调用 dice_loss(logits, label, softmax=True)；
+# 其他多分类训练代码也可以复用它。
+# 它是 nn.Module，因此可以像普通损失函数一样放入训练循环，但它本身没有可学习参数。
+# 它的输入通常是：
 #   inputs: [B,C,H,W]，网络输出的原始 logits，而不是已经 argmax 的类别图；
 #   target: [B,H,W]，每个像素是 0..C-1 的整数类别编号；
 #   weight: 可选的长度为 C 的类别权重；
 #   softmax: 是否在函数内部把 logits 转为互斥类别概率。
 #
-# 为什么 Dice 要保留概率而不是先 argmax：argmax 是离散操作，几乎处处没有可用
-# 梯度；训练阶段必须用 softmax 后的连续概率计算“软交集”，这样 loss.backward()
-# 才能把误差传回 EMCAD 的解码器和编码器。推理阶段才使用 softmax+argmax 得到
-# 最终类别索引。该实现把背景类别 0 也纳入平均，最终由调用方决定是否再与 CE
-# 加权组合。
+# 为什么 Dice 要保留概率而不是先 argmax：argmax 是离散操作，几乎处处没有可用梯度；
+# 训练阶段必须用 softmax 后的连续概率计算“软交集”，这样 loss.backward()才能把误差传回 EMCAD 的解码器和编码器。推理阶段才使用 softmax+argmax 得到最终类别索引。
+# 该实现把背景类别 0 也纳入平均，最终由调用方决定是否再与 CE加权组合。
 class DiceLoss(nn.Module):
     # n_classes 必须等于网络输出 logits 的通道数。
     def __init__(self, n_classes):
@@ -424,14 +395,10 @@ class DiceLoss(nn.Module):
 # 这里的“percase”指一个病例、一个类别，而不是整个数据集一次性计算。
 #
 # 输入 pred、gt 应具有相同形状，通常是 [D,H,W] 或单张 [H,W] 的 NumPy 数组，
-# 值可以是 bool、0/1 或任意正数标签。函数会把正值原地改成 1，因此传入的是
-# 视图或仍要复用的数组时要注意副作用。MedPy 的 hd95/assd 还依赖前景边界；
-# 如果数组没有合适的体素 spacing，本文件调用的是默认像素间距，结果单位是像素
-# 而不是真实毫米。test_single_volume 保存 NIfTI 时会写入 z_spacing，但这里计算
-# 指标时并没有把 spacing 传给 MedPy，这是当前代码的实际语义。
+# 值可以是 bool、0/1 或任意正数标签。函数会把正值原地改成 1，因此传入的是视图或仍要复用的数组时要注意副作用。
+# MedPy 的 hd95/assd 还依赖前景边界；如果数组没有合适的体素 spacing，本文件调用的是默认像素间距，结果单位是像素而不是真实毫米。test_single_volume 保存 NIfTI 时会写入 z_spacing，但这里计算指标时并没有把 spacing 传给 MedPy，这是当前代码的实际语义。
 #
-# 空前景分支是历史约定，不能简单按数学公式理解：当前代码对“预测有前景、真值
-# 为空”返回 Dice=1、Jaccard=1，这与通常把假阳性判为 0 的评价约定相反；这里保留
+# 空前景分支是历史约定，不能简单按数学公式理解：当前代码对“预测有前景、真值为空”返回 Dice=1、Jaccard=1，这与通常把假阳性判为 0 的评价约定相反；这里保留
 # 原行为，只把它明确写出来，避免阅读者误以为该分支是 MedPy 自动得出的结果。
 def calculate_metric_percase(pred, gt):
     # 把所有正值统一成前景 1；该操作会原地修改传入数组。
@@ -465,13 +432,11 @@ def calculate_metric_percase(pred, gt):
         # 原策略统一返回零重叠和零距离。
         return 0, 0, 0, 0
 
+
+
 # 验证阶段的轻量版本，只计算单个二值类别 Dice。
-#
-# 调用位置：trainer.py 的 inference/验证循环调用 val_single_volume，后者只需要
-# Dice 来选择 best.pth，因此使用此轻量函数，避免每个 epoch 都计算较昂贵的 HD95、
-# Jaccard 和 ASSD。它与 calculate_metric_percase 使用相同的二值化和空类约定，
-# 所以验证 Dice 与最终测试 Dice 的空类处理是一致的，但测试时的其他几何指标不会
-# 在这里产生。
+# 调用位置：trainer.py 的 inference/验证循环调用 val_single_volume，后者只需要Dice 来选择 best.pth，因此使用此轻量函数，避免每个 epoch 都计算较昂贵的 HD95、Jaccard 和 ASSD。
+# 它与 calculate_metric_percase 使用相同的二值化和空类约定，所以验证 Dice 与最终测试 Dice 的空类处理是一致的，但测试时的其他几何指标不会在这里产生。
 def calculate_dice_percase(pred, gt):
     # 原地将预测二值化。
     pred[pred > 0] = 1
@@ -493,11 +458,11 @@ def calculate_dice_percase(pred, gt):
         # 返回零 Dice。
         return 0
 
+
+
 # 对一个 Synapse 病例执行逐切片推理、逐类指标计算，并可保存可视化和 NIfTI。
-#
-# 这是本文件最重要的“测试集/整病例”函数。训练阶段通常把二维切片作为样本，
-# 但医学论文的病例级结果要把同一个病人的所有切片重新组合起来；本函数就是
-# 这个桥梁。典型调用来自 test_synapse.py：
+# 这是本文件最重要的“测试集/整病例”函数。
+# 训练阶段通常把二维切片作为样本，但医学论文的病例级结果要把同一个病人的所有切片重新组合起来；本函数就是这个桥梁。典型调用来自 test_synapse.py：
 #
 #   image: DataLoader 输出的 [1,D,H,W]，其中第一个 1 是 batch 维；
 #   label: 同样是 [1,D,H,W] 的整数标签；
@@ -508,15 +473,12 @@ def calculate_dice_percase(pred, gt):
 #   z_spacing: 保存 NIfTI 时使用的 z 方向体素间距；
 #   class_names: 可选的前景器官名称，用于叠加图标签。
 #
-# 核心顺序是：去 batch -> 逐切片 resize -> CUDA 前向 -> softmax/argmax ->
-# 还原切片尺寸 -> 拼回 prediction -> 对每个前景类别计算指标 -> 可选保存结果。
-# resize 图像时用三次插值，因为 CT 灰度是连续值；resize 离散类别预测时用最近
-# 邻插值，因为线性/三次插值会生成 1.3 之类不存在的类别编号。
+# 核心顺序是：去 batch -> 逐切片 resize -> CUDA 前向 -> softmax/argmax ->还原切片尺寸 -> 拼回 prediction -> 对每个前景类别计算指标 -> 可选保存结果。
+# resize 图像时用三次插值，因为 CT 灰度是连续值；resize 离散类别预测时用最近邻插值，因为线性/三次插值会生成 1.3 之类不存在的类别编号。
 #
-# 当前实现有几个必须知道的运行前提：函数内部硬编码 .cuda()，所以没有 CUDA 时
-# 即使调用方选择 CPU 也会失败；net.eval() 在每张切片循环内重复调用，语义正确但
-# 有少量额外开销；三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，
-# 因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
+# 当前实现有几个必须知道的运行前提：函数内部硬编码 .cuda()，所以没有 CUDA 时即使调用方选择 CPU 也会失败；
+# net.eval() 在每张切片循环内重复调用，语义正确但有少量额外开销；
+# 三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
 # 这些历史行为，只在注释中把它们标明，便于你沿调用链排查问题。
 def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1, class_names=None):
     # DataLoader 增加了 batch 维；去掉 batch 后搬到 CPU、断开计算图并转为 NumPy。
@@ -709,20 +671,18 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
     # 返回长度 C-1 的逐类指标列表，外层 test_synapse.py 再按病例求平均。
     return metric_list
 
+
+
 # 验证阶段的病例级推理：流程与 test_single_volume 类似，但只返回逐类 Dice 且不保存图像。
 #
-# 调用位置：trainer.py 的 inference() 在每个 epoch 后调用本函数，得到一个病例中
-# 每个前景器官的 Dice，再跨病例平均，并用 mean Dice 决定是否保存 best.pth。
+# 调用位置：trainer.py 的 inference() 在每个 epoch 后调用本函数，得到一个病例中每个前景器官的 Dice，再跨病例平均，并用 mean Dice 决定是否保存 best.pth。
 #
-# 与 test_single_volume 的差别是“验证阶段只保留选择 checkpoint 所需的最小结果”：
-# 不创建 overlay_masks 图、不写 PNG/NIfTI、不计算 HD95/Jaccard/ASD，只返回长度
-# classes-1 的 Dice 列表。因此它通常比完整测试更快，但不能替代最终的病例级指标报告。
-# 参数 test_save_path、case、z_spacing 为了兼容旧调用接口而保留，在当前函数体中
-# 没有参与保存或 Dice 计算；看到它们不要误以为验证阶段会写文件。
+# 与 test_single_volume 的差别是“验证阶段只保留选择 checkpoint 所需的最小结果”：不创建 overlay_masks 图、不写 PNG/NIfTI、不计算 HD95/Jaccard/ASD，只返回长度classes-1 的 Dice 列表。
+# 此它通常比完整测试更快，但不能替代最终的病例级指标报告。
+# 参数 test_save_path、case、z_spacing 为了兼容旧调用接口而保留，在当前函数体中没有参与保存或 Dice 计算；看到它们不要误以为验证阶段会写文件。
 #
 # 输入形状约定与 test_single_volume 相同：DataLoader 的 [1,D,H,W] 会先变成 [D,H,W]，
-# 然后逐切片 resize、前向、还原尺寸并拼回 prediction；若输入已经是 [H,W]，则只做
-# 一次前向。函数同样硬编码 .cuda()，所以当前验证实现要求 CUDA 环境。
+# 然后逐切片 resize、前向、还原尺寸并拼回 prediction；若输入已经是 [H,W]，则只做一次前向。函数同样硬编码 .cuda()，所以当前验证实现要求 CUDA 环境。
 def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1):
     # 去掉 batch 维、转到 CPU，并转换为 NumPy 体数据。
     # 验证只做前向和指标，不需要保留 PyTorch 图；把数据转 NumPy 后可以直接使用
@@ -819,12 +779,14 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
     # 返回逐类 Dice，trainer.py 再求病例及类别平均。
     return metric_list
 
+
+
+
 # 对 HWC 数组做左右镜像；用于下面的测试时增强。
 #
-# 输入约定是 NumPy 的 HWC（Height, Width, Channel）布局，而不是 PyTorch 常见的
-# CHW。切片表达式只反转第 2 个轴，也就是左右方向；通道轴保持不变。函数不改变
-# 数值内容，只改变像素的空间顺序。它属于早期/兼容性 TTA 辅助函数，当前 EMCAD
-# 的主要 Synapse 测试路径使用 test_single_volume，并没有调用这里的 tta_model。
+# 输入约定是 NumPy 的 HWC（Height, Width, Channel）布局，而不是 PyTorch 常见的CHW。
+# 切片表达式只反转第 2 个轴，也就是左右方向；通道轴保持不变。函数不改变数值内容，只改变像素的空间顺序。
+# 它属于早期/兼容性 TTA 辅助函数，当前 EMCAD的主要 Synapse 测试路径使用 test_single_volume，并没有调用这里的 tta_model。
 def horizontal_flip(image):
     # 高度和通道轴不变，宽度轴使用 ::-1 反序。
     # `::-1` 的步长为 -1，表示从最后一列向第一列读取；这样左侧像素会移动到右侧。
@@ -833,10 +795,10 @@ def horizontal_flip(image):
     # 返回翻转视图/数组。
     return image
 
+
+
 # 对 HWC 数组做上下镜像。
-#
-# 这与 horizontal_flip 对称：只反转高度轴，宽度和通道不变。TTA 使用它来构造
-# 一个与训练样本不同方向的输入，检验模型是否对简单的空间翻转更稳健。
+# 这与 horizontal_flip 对称：只反转高度轴，宽度和通道不变。TTA 使用它来构造一个与训练样本不同方向的输入，检验模型是否对简单的空间翻转更稳健。
 def vertical_flip(image):
     # 高度轴反序，宽度和通道保持。
     # 第一个 `::-1` 反转行顺序；如果图像是 HWC，结果形状仍为 HWC。
@@ -844,16 +806,16 @@ def vertical_flip(image):
     # 返回翻转结果。
     return image
 
+
+
+
 # Keras 风格 predict 接口的三视图测试时增强；当前 PyTorch Synapse 路径没有调用。
 #
-# TTA（test-time augmentation）的思想是：同一张图以原始、水平翻转、垂直翻转三种
-# 形式预测，再把所有结果变回原坐标并平均。若模型输出的是概率图，平均可以降低
-# 某一次方向预测的偶然误差；若输出已经是离散 0/1 类别图，平均后的值则需要调用方
-# 再阈值化，不能直接当作类别编号。
+# TTA（test-time augmentation）的思想是：同一张图以原始、水平翻转、垂直翻转三种形式预测，再把所有结果变回原坐标并平均。
+# 若模型输出的是概率图，平均可以降低某一次方向预测的偶然误差；
+# 若输出已经是离散 0/1 类别图，平均后的值则需要调用方再阈值化，不能直接当作类别编号。
 #
-# 该函数使用 model.predict(...)，这是 Keras 风格接口；EMCAD 的 PyTorch 模型通常
-# 直接调用 model(tensor)，所以不能把它未经改造地接到当前 PyTorch 网络上。它还假设
-# image 和 model 输出都是 HWC，并依赖 NumPy 翻转结果能被 model.predict 接受。
+# 该函数使用 model.predict(...)，这是 Keras 风格接口；EMCAD 的 PyTorch 模型通常直接调用 model(tensor)，所以不能把它未经改造地接到当前 PyTorch 网络上。它还假设image 和 model 输出都是 HWC，并依赖 NumPy 翻转结果能被 model.predict 接受。
 def tta_model(model, image):
     # 原始方向图像。
     # 保留原引用即可，因为函数不会修改 n_image 的元素；翻转函数只产生新的视图。
@@ -888,15 +850,15 @@ def tta_model(model, image):
     # 返回融合后的测试时增强结果。
     return mean_mask
 
+
+
+
 # 使用随机输入统计模型 FLOPs、THOP 参数量和直接求和参数量。
 #
-# 调用位置：train_polyp_SLDGroup.py 启动每个 run 时调用 cal_params_flops(model,
-# opt.img_size, logging)，用于把模型复杂度写入日志。它和 CalParams 的区别是：
-# CalParams 接收调用方准备好的真实 input_tensor；本函数自己创建一个 [1,3,S,S]
-# 的随机 CUDA 输入，并同时打印 THOP 统计和直接计数得到的参数量。
+# 调用位置：train_polyp_SLDGroup.py 启动每个 run 时调用 cal_params_flops(model,opt.img_size, logging)，用于把模型复杂度写入日志。
+# 它和 CalParams 的区别是： CalParams 接收调用方准备好的真实 input_tensor；本函数自己创建一个 [1,3,S,S]的随机 CUDA 输入，并同时打印 THOP 统计和直接计数得到的参数量。
 #
-# 当前实现假设模型接受 3 通道输入且 CUDA 可用。EMCAD 的某些医学图像路径可能是
-# 单通道 [B,1,H,W]，这种情况下直接调用此函数可能在 forward 阶段报通道数错误；
+# 当前实现假设模型接受 3 通道输入且 CUDA 可用。EMCAD 的某些医学图像路径可能是单通道 [B,1,H,W]，这种情况下直接调用此函数可能在 forward 阶段报通道数错误；
 # 复杂度统计的输入通道数必须与实际模型入口保持一致，否则 FLOPs 没有可比性。
 def cal_params_flops(model, size, logger):
     # 构造 [1,3,size,size] 的随机 CUDA 输入；适用于三通道模型接口。
@@ -923,13 +885,12 @@ def cal_params_flops(model, size, logger):
     # 避免只在终端打印而丢失记录。
     logger.info(f'flops: {flops/1e9}, params: {params/1e6}, Total params: : {total/1e6:.4f}')
 
+
+
 # Example function to calculate and print GMACs and parameter count for a given model
-# 使用 ptflops 打印模型参数量和 MACs 的辅助函数。
-#
-# 这是另一套复杂度统计入口，使用 ptflops 而不是 THOP。input_size 使用不含 batch
-# 的 CHW 格式（默认 [3,224,224]），ptflops 会自行添加 batch=1 并尝试分析各层。
-# 该函数主要用于交互式比较模型，不参与训练或测试；若模型含有 ptflops 不认识的
-# 自定义模块，可能需要额外的 hook 或会出现统计警告。
+# 使用 ptflops 打印模型参数量和 MACs 的辅助函数。这是另一套复杂度统计入口，使用 ptflops 而不是 THOP。
+# input_size 使用不含 batch的 CHW 格式（默认 [3,224,224]），ptflops 会自行添加 batch=1 并尝试分析各层。
+# 该函数主要用于交互式比较模型，不参与训练或测试；若模型含有 ptflops 不认识的自定义模块，可能需要额外的 hook 或会出现统计警告。
 def print_model_stats(model, input_size=(3, 224, 224)):
     # Print model parameter count
     # 遍历全部参数张量并累计元素数量，不区分是否 requires_grad。
