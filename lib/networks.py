@@ -13,7 +13,7 @@ from lib.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from lib.decoders import EMCAD
 
 
-# ============================== 阅读总览 ==============================
+# ===========================================================
 # 这个文件不负责定义 PVTv2、ResNet 或 EMCAD 内部的具体算子，而是负责把它们“组装”成一个可训练的分割网络。
 # 可以把 EMCADNet 理解为总调度器：它规定数据依次经过哪些模块、四级特征如何传递、最终怎样得到分割图。
 #
@@ -33,7 +33,8 @@ from lib.decoders import EMCAD
 #   四个输出头先得到 11/22/44/88 四种分辨率的 logits，再分别放大 32/16/8/4 倍到 352x352。
 #
 # 注意“编码器选择”和“是否使用预训练权重”是两个不同问题：
-#   encoder 决定网络结构是 PVTv2 还是 ResNet；pretrain 只决定该结构是否加载已有 ImageNet 参数。
+# encoder 决定网络结构是 PVTv2 还是 ResNet；
+# pretrain 只决定该结构是否加载已有 ImageNet 参数。
 # 即使 pretrain=False，编码器仍然存在，只是从本文件/对应骨干定义的随机初始化权重开始训练。
 #
 # 本模型内部不做 sigmoid、softmax、argmax 或阈值化。返回值是 logits：
