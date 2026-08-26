@@ -1,28 +1,38 @@
-# 数据集
 data/
 data/**
-# 常见大文件
+
 *.npz
 *.h5
 *.nii
 *.nii.gz
+*.dcm
+*.dicom
+*.nrrd
+*.mha
+*.mhd
+*.raw
+*.vtk
+*.vti
+*.stl
 
-# 训练产物
+
+
 model_pth/
 pretrained_pth/
 runs/
 logs/
 
-# 系统
 .DS_Store
 Thumbs.db
 
-# PyCharm
+
 .idea/
 
 
-# Python
 __pycache__/
+*.pyc
+*.pyo
+
 
 lib/__pycache__
 
@@ -37,3 +47,42 @@ lib/__pycache__
 
 *.pdf
 *.md
+
+
+venv/
+env/
+ENV/
+.venv/
+virtualenv/
+.env
+
+*.swp
+*.swo
+*~
+
+
+*.log
+tensorboard/
+lightning_logs/
+wandb/
+outputs/
+results/
+
+*.pth
+*.h5
+*.ckpt
+*.hdf5
+*.keras
+*.ckpt
+*.pb
+*.onnx
+*.tflite
+*.safetensors
+
+
+
+mlruns/
+events.out.tfevents.*
+.monai/
+
+
