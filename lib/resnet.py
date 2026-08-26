@@ -34,8 +34,36 @@ model_urls = {
 }
 
 
+# ============================== 本文件阅读地图 ==============================
+# 本文件实现的是“编码器”，不是完整 EMCAD 分割网络。它负责把一张 RGB 图像逐级压缩成四张不同尺度的特征图。
+# lib/networks.py 中的 EMCADNet 会调用这里的 resnet18/34/50/101/152 工厂函数，再把本文件 forward 返回的
+# [x1,x2,x3,x4] 交给 EMCAD 解码器。也就是说，本文件解决“从图像提取多尺度语义”，decoders.py 解决“恢复分辨率并分割”。
+#
+# 标准输入 x=[B,3,H,W] 的空间流向：
+#   7x7 stride=2 卷积 -> [B,64,H/2,W/2]
+#   3x3 stride=2 最大池化 -> [B,64,H/4,W/4]
+#   layer1 -> x1，保持 H/4
+#   layer2 -> x2，变为 H/8
+#   layer3 -> x3，变为 H/16
+#   layer4 -> x4，变为 H/32。
+# 对 352x352 输入，四级空间尺寸就是 88x88、44x44、22x22、11x11，与默认 PVTv2-B2 的尺度完全对齐。
+#
+# 不同 ResNet 变体的关键区别有两类：
+#   1. ResNet18/34 使用 BasicBlock，expansion=1，四级通道为 [64,128,256,512]；
+#   2. ResNet50/101/152 使用 Bottleneck，expansion=4，四级通道为 [256,512,1024,2048]。
+# 因此替换骨干时，EMCAD 的 channels 参数也必须同步变化；lib/networks.py 已为每个构造器给出对应逆序列表。
+#
+# 残差块的核心不是简单“多加一条线”，而是让输出等于 F(x)+shortcut(x)。
+# 当输入输出形状相同，shortcut 直接传 x；当通道数或空间尺寸变化，shortcut 必须用 1x1 卷积投影后才能逐元素相加。
+# 这条捷径既保留原始信息，也为梯度提供更直接的传播路径，是深层 ResNet 能稳定训练的重要原因。
+# ===========================================================================
+
+
 # 创建不带偏置的 3x3 卷积；padding=1 在 stride=1 时保持空间尺寸。
 def conv3x3(in_planes, out_planes, stride=1):
+    # 参数逐项说明：in_planes 是输入通道，out_planes 是输出通道，stride 决定是否下采样。
+    # 对输入 [B,in_planes,H,W]：stride=1 时输出 [B,out_planes,H,W]；stride=2 时通常输出约 [B,out_planes,H/2,W/2]。
+    # 把这个常用组合封装成函数，可确保 BasicBlock 两处 3x3 卷积始终使用相同 padding/bias 约定。
     """3x3 convolution with padding"""
     # BatchNorm 紧随卷积时不需要卷积 bias。
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
@@ -45,11 +73,19 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 # ResNet-18/34 使用的两层基础残差块；结构来自 ResNet 原论文，而非 EMCAD 创新模块。
 class BasicBlock(nn.Module):
+    # ------------------------------ BasicBlock 数据流 ------------------------------
+    # 主分支：x -> 3x3卷积 -> BN -> ReLU -> 3x3卷积 -> BN -> 与 residual 相加 -> ReLU。
+    # 捷径分支：默认 residual=x；若 shape 变化，则 residual=downsample(x)。
+    # 最终相加要求两边四个维度完全相同，这也是 __init__ 必须接收 downsample 的直接原因。
+    # 例：layer2 首块可把 [B,64,88,88] 变成 [B,128,44,44]；主分支和捷径分支都必须完成同样的变化。
+    # ------------------------------------------------------------------------------
     # 输出通道等于 planes，不做瓶颈扩张。
     expansion = 1
 
     # stride 通常只在每个 stage 的首块取 2；downsample 对齐残差尺寸/通道。
     def __init__(self, inplanes, planes, stride=1, downsample=None):
+        # inplanes 描述输入 x 的通道；planes 描述主分支两层卷积的输出通道。
+        # downsample 不是布尔值，而是由 ResNet._make_layer 预先构造好的 nn.Sequential，或表示无需投影的 None。
         # 初始化 Module。
         super(BasicBlock, self).__init__()
         # 第一层 3x3 可通过 stride=2 完成空间下采样和通道映射。
@@ -69,6 +105,7 @@ class BasicBlock(nn.Module):
 
     # 输入 x 形状通常为 [B,inplanes,H,W]。
     def forward(self, x):
+        # forward 不创建新参数，只按 __init__ 注册好的模块执行张量运算；同一块在每次迭代中重复使用同一组权重。
         # 默认捷径分支直接引用输入。
         residual = x
 
@@ -90,6 +127,7 @@ class BasicBlock(nn.Module):
             residual = self.downsample(x)
 
         # 主分支与捷径分支逐元素相加；此时 shape 必须一致。
+        # “逐元素”表示相同批次、通道、行、列位置一一相加，不是通道拼接，所以相加后通道数不会翻倍。
         out += residual
         # 残差相加后执行 ReLU。
         out = self.relu(out)
@@ -100,11 +138,18 @@ class BasicBlock(nn.Module):
 
 # ResNet-50/101/152 使用的 1x1-3x3-1x1 瓶颈残差块。
 class Bottleneck(nn.Module):
+    # ------------------------------ Bottleneck 数据流 ------------------------------
+    # 若 planes=P，则主分支通道依次为：inplanes -> P -> P -> 4P。
+    # 第一层 1x1 负责降低/整理通道，中间 3x3 负责昂贵的空间建模，最后 1x1 再恢复到 4P；这比全程在 4P 通道做 3x3 更省计算。
+    # expansion=4 指“最终输出相对 planes 的倍率”，不是相对任意输入 inplanes 固定放大四倍。
+    # stage 内第一个块可能改变通道和分辨率，后续块通常输入输出均为 4P，可以直接使用恒等捷径。
+    # -------------------------------------------------------------------------------
     # 最后一层把内部 planes 扩张到 4*planes。
     expansion = 4
 
     # 参数含义与 BasicBlock 相同，但输出通道由 expansion 决定。
     def __init__(self, inplanes, planes, stride=1, downsample=None):
+        # 例如 ResNet50 的 layer1 首块参数是 inplanes=64、planes=64，最终输出不是64而是64*4=256通道。
         # 初始化 Module。
         super(Bottleneck, self).__init__()
         # 第一层 1x1 把输入通道压到 planes。
@@ -130,6 +175,7 @@ class Bottleneck(nn.Module):
 
     # 输入 x 通过三层主分支并与捷径相加。
     def forward(self, x):
+        # 这里把 stride 放在中间 3x3 卷积；因此需要下采样时，主分支在第二层缩小 H/W，捷径同步按相同步长投影。
         # 默认捷径直接使用输入。
         residual = x
 
@@ -158,6 +204,7 @@ class Bottleneck(nn.Module):
             residual = self.downsample(x)
 
         # 残差融合。
+        # 此处仍是逐元素求和而非 concat；downsample 的职责就是保证 residual 已变成与 out 完全相同的 [B,4P,H',W']。
         out += residual
         # 融合后激活。
         out = self.relu(out)
@@ -169,6 +216,14 @@ class Bottleneck(nn.Module):
 # 四级层次化 ResNet；EMCAD 论文主文 PDF5 §3.2 只说明解码器兼容层次化骨干，未报告 ResNet 实验。
 class ResNet(nn.Module):
 
+    # ------------------------------ 构造参数与状态 ------------------------------
+    # block：传入类本身（BasicBlock 或 Bottleneck），_make_layer 会多次实例化它。
+    # layers：长度为4的列表，逐项表示 layer1~layer4 各有多少个残差块，例如 ResNet34 是 [3,4,6,3]。
+    # num_classes：仅决定遗留分类头 fc 的输出数；当前分割 forward 不调用 fc，因此它不等于 EMCAD 的分割类别数。
+    # deep_base：False 使用经典单层 7x7 stem；True 使用三层 3x3 stem。当前工厂函数默认都传 False。
+    # stem_width：只在 deep_base=True 时决定 stem 中间宽度，默认最终仍得到 2*32=64 通道。
+    # self.inplanes 是“正在构造的下一个块会接收多少通道”的可变记账值，每建完一个 stage 都会被 _make_layer 更新。
+    # --------------------------------------------------------------------------
     # block 决定基础/瓶颈结构，layers 给出四个 stage 的块数。
     def __init__(self, block, layers, num_classes=1000, deep_base=False, stem_width=32):
         # 标准 stem 输出64通道；deep_base 最后输出 2*stem_width。
@@ -216,11 +271,15 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         # stage4 输出 1/32 分辨率。
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        # 下面 avgpool/fc 是原始 ImageNet 分类实现遗留。保留它们可让官方完整 state_dict 严格加载，但分割前向不会产生分类结果。
         # 分类模型遗留的全局池化；当前分割 forward 不调用，但参数外没有可训练状态。
         self.avgpool = nn.AvgPool2d(7, stride=1)
         # 分类头遗留参数仍注册在模型中，但分割 forward 不执行它。
+        # 因为 fc 仍是已注册子模块，它的参数会出现在 model.parameters()/state_dict() 中，也会被优化器纳入，尽管没有梯度时不会更新。
         self.fc = nn.Linear(512 * block.expansion, num_classes)
 
+        # 这里是显式初始化流程：它会访问 stem、四个 stage、投影捷径等所有已注册卷积/BN，也包括 deep_base 中的层。
+        # Linear 分类头未在此分支中单独处理，继续使用 nn.Linear 自己的默认初始化。
         # 遍历所有已构造子模块执行原始初始化。
         for m in self.modules():
             # 卷积权重使用与输出通道相关的正态初始化。
@@ -238,10 +297,15 @@ class ResNet(nn.Module):
 
     # 构建一个 stage；首块可下采样，后续块保持 shape。
     def _make_layer(self, block, planes, blocks, stride=1):
+        # 该方法在 __init__ 中调用四次。它返回的是一个完整 stage，而不是只返回一层卷积。
+        # planes 是块的“基础通道”；stage 真实输出通道始终为 planes*block.expansion。
+        # blocks 决定该 stage 重复多少个残差块；只有第一个块使用传入 stride，余下块的 stride 都保持默认1。
         # 默认捷径无需投影。
         downsample = None
         # 空间步长变化或通道不等于 planes*expansion 时必须对齐残差。
         if stride != 1 or self.inplanes != planes * block.expansion:
+            # 两个条件任一成立都不能直接做 F(x)+x：前者表示 H/W 不同，后者表示通道数不同。
+            # 投影捷径用最便宜的 1x1 卷积完成对齐，并用 BN 保持与主分支相近的数值尺度。
             # 1x1 卷积加 BN 的投影捷径。
             downsample = nn.Sequential(
                 # 同时改变通道和可选空间步长。
@@ -253,10 +317,12 @@ class ResNet(nn.Module):
             )
 
         # 收集当前 stage 的残差块。
+        # 先使用普通 Python 列表是为了动态 append；函数末尾再展开成 nn.Sequential，PyTorch 才能注册其中参数。
         layers = []
         # 首块接收旧 self.inplanes，并承担 stride/downsample。
         layers.append(block(self.inplanes, planes, stride, downsample))
         # 更新后续块的输入通道到当前 stage 输出通道。
+        # 这一赋值也会影响下一次 _make_layer 调用。例如构造完 layer1 后，layer2 能知道自己接收的是64或256通道。
         self.inplanes = planes * block.expansion
         # 从第2个块开始不再下采样。
         for i in range(1, blocks):
@@ -264,8 +330,15 @@ class ResNet(nn.Module):
             layers.append(block(self.inplanes, planes))
 
         # 将 Python 列表注册成可调用 Sequential stage。
+        # 星号把列表元素展开为位置参数，等价于 nn.Sequential(layers[0], layers[1], ...)。
         return nn.Sequential(*layers)
 
+    # ------------------------------ 分割前向接口 ------------------------------
+    # 这里与经典 torchvision ResNet 最大的行为差异，是不把 layer4 输出送进 avgpool/fc，而是保存并返回四个 stage。
+    # 返回列表必须保持从浅到深顺序：[1/4,1/8,1/16,1/32]，因为 networks.py 会按 x1,x2,x3,x4 解包。
+    # 对 352 输入：ResNet18/34 返回 [B,64,88,88]、[B,128,44,44]、[B,256,22,22]、[B,512,11,11]；
+    # ResNet50+ 的空间尺寸相同，但通道依次是 256、512、1024、2048。
+    # -------------------------------------------------------------------------
     # 分割编码器前向只返回四级特征，不执行 avgpool/fc 分类头。
     def forward(self, x):
         # 输入 [B,3,H,W] 经 stem 卷积得到约 [B,64,H/2,W/2]。
@@ -278,6 +351,7 @@ class ResNet(nn.Module):
         x = self.maxpool(x)
 
         # 依次保存由浅到深的四级特征，接口与 PVTv2 forward 一致。
+        # features 是当前这次 forward 的临时 Python 列表，不是模型参数，也不会写入 state_dict。
         features = []
 
         # x1：ResNet18/34 为64通道，ResNet50+为256通道，空间1/4。
@@ -301,12 +375,19 @@ class ResNet(nn.Module):
         # x = x.view(x.size(0), -1)
         # x = self.fc(x)
 
+        # 列表中的张量都保留计算图，所以 EMCAD 从任一级特征反向传播的梯度都能继续进入相应 ResNet 层。
         # 返回 [x1,x2,x3,x4]；lib/networks.py 会逆序传给 EMCAD 解码器。
         return features
 
 
+# 下列五个工厂函数把“块类型 + 每阶段块数”封装成常用 ResNet 名称，供 networks.py 通过 encoder 字符串选择。
+# pretrained=False 只是不加载 ImageNet 权重，并不会删掉任何层；pretrained=True 会从 URL 下载或命中本机 PyTorch 缓存。
+# load_state_dict 默认 strict=True，因此官方权重键名和形状必须与当前 ResNet（包括未使用的 fc）一致。
+
+
 # 构造 ResNet-18：四个 stage 的 BasicBlock 数量为 2/2/2/2。
 def resnet18(pretrained=False, **kwargs):
+    # **kwargs 原样传给 ResNet，可用于覆盖 num_classes/deep_base/stem_width；当前 EMCADNet 调用没有额外传值。
     """Constructs a ResNet-18 model.
 
     Args:
@@ -324,6 +405,7 @@ def resnet18(pretrained=False, **kwargs):
 
 # 构造 ResNet-34：BasicBlock 数量为 3/4/6/3。
 def resnet34(pretrained=False, **kwargs):
+    # 相比 ResNet18，它只增加各 stage 的 BasicBlock 数量，四级接口和通道数保持不变，所以解码器 channels 无需另改。
     """Constructs a ResNet-34 model.
 
     Args:
@@ -332,6 +414,7 @@ def resnet34(pretrained=False, **kwargs):
     # 四级输出通道仍为 [64,128,256,512]。
     model = ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
     # 原代码创建模型参数字典但活动加载逻辑未使用它；只保留现状。
+    # 该局部变量不会改变模型，也不会复制底层参数；state_dict() 返回键到张量的有序映射，函数结束后变量即失去引用。
     model_dict = model.state_dict()
 
     # 可选加载 ImageNet 预训练权重。
@@ -352,6 +435,7 @@ def resnet34(pretrained=False, **kwargs):
 
 # 构造 ResNet-50：使用扩张系数4的 Bottleneck，块数3/4/6/3。
 def resnet50(pretrained=False, **kwargs):
+    # 从此变体开始使用 Bottleneck；虽然块数配置也为3/4/6/3，但每块有三层卷积且 expansion=4，不能按 ResNet34 通道理解。
     """Constructs a ResNet-50 model.
 
     Args:
@@ -371,6 +455,7 @@ def resnet50(pretrained=False, **kwargs):
 
 # 构造 ResNet-101：第三 stage 加深到23个 Bottleneck。
 def resnet101(pretrained=False, **kwargs):
+    # 名称中的101来自完整分类网络的层数计数；本函数最显著的结构变化是 layer3 从6个 Bottleneck 增至23个。
     """Constructs a ResNet-101 model.
 
     Args:
@@ -388,6 +473,7 @@ def resnet101(pretrained=False, **kwargs):
 
 # 构造 ResNet-152：四个 stage 的 Bottleneck 数量为3/8/36/3。
 def resnet152(pretrained=False, **kwargs):
+    # layer2 和 layer3 进一步加深为8与36个 Bottleneck；更深不等于在当前医学数据上必然更好，还会显著增加计算和显存。
     """Constructs a ResNet-152 model.
 
     Args:
