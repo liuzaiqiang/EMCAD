@@ -96,7 +96,7 @@ class ACDCdataset(Dataset):
         # 保存划分名称。
         self.split = split
         # 读取 <list_dir>/<split>.txt 的全部行；原实现未显式关闭句柄，保持不变。
-        self.sample_list = open(os.path.join(list_dir, self.split+'.txt')).readlines()
+        self.sample_list = open(os.path.join(list_dir, self.split + '.txt')).readlines()
         # 保存数据根目录。
         self.data_dir = base_dir
 
@@ -138,7 +138,6 @@ class ACDCdataset(Dataset):
         sample['case_name'] = self.sample_list[idx].strip('\n')
         # 返回样本字典。
         return sample
-
 
 # class ACDCVolumeDataset(Dataset):  # 定义按完整三维体读取验证集和测试集的数据集。
 #     """把 valid 二维切片重组成 volume；test 直接读取三维 NPZ。"""  # 说明类的用途。

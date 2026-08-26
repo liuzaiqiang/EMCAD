@@ -47,6 +47,7 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset 生成监督组合；DiceLoss 计算多类软 Dice；两个 volume 函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 
+
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
 # 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
 def inference(args, model, best_performance):
@@ -70,7 +71,8 @@ def inference(args, model, best_performance):
         image, label, case_name = sampled_batch["image"], sampled_batch["label"], sampled_batch['case_name'][0]
         # val_single_volume 会逐切片缩放到 [img_size,img_size]，前向推理、argmax，再还原原尺寸。
         # 返回长度 num_classes-1 的列表；每个元素是对应前景类别在该病例上的 Dice。
-        metric_i = val_single_volume(image, label, model, classes=args.num_classes, patch_size=[args.img_size, args.img_size],
+        metric_i = val_single_volume(image, label, model, classes=args.num_classes,
+                                     patch_size=[args.img_size, args.img_size],
                                      # case 用于日志语义；z_spacing 传入但当前 val_single_volume 的 Dice 路径不使用物理间距。
                                      case=case_name, z_spacing=args.z_spacing)
         # 把当前病例的 8 类 Dice 转为 NumPy 数组并累加到跨病例总和。
@@ -120,7 +122,8 @@ def trainer_synapse(args, model, snapshot_path):
         random.seed(args.seed + worker_id)
 
     # 构造训练批次：shuffle=True 每个 epoch 重排切片；pin_memory=True 可加快 CPU->GPU 拷贝。
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,
+                             worker_init_fn=worker_init_fn)
     # 下面两行原注释提示 Windows 多进程读取可能需要 num_workers=0；当前真正执行的是上面的 8。
     # windows下 num_workers需要改为0
     # trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,worker_init_fn=worker_init_fn)

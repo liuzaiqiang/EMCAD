@@ -17,7 +17,6 @@ from utils.dataloader_isic import (
     get_loader,
 )
 
-
 # 允许测试的数据版本。
 ALLOWED_DATASETS = {
     # ISIC 2017。
@@ -103,15 +102,15 @@ def _parse_args():
     checkpoint = Path(
         # argparse 字符串。
         args.checkpoint
-    # resolve 规范路径。
+        # resolve 规范路径。
     ).resolve()
 
     # 训练配置必须与 best.pth 等检查点位于同一目录。
     config_path = (
         # 检查点父目录。
-        checkpoint.parent
-        # 配置文件名。
-        / "config.json"
+            checkpoint.parent
+            # 配置文件名。
+            / "config.json"
     )
 
     # 没有配置就无法可靠重建相同网络结构。
@@ -129,10 +128,10 @@ def _parse_args():
 
     # 读取训练配置 JSON。
     with config_path.open(
-        # 只读。
-        "r",
-        # UTF-8。
-        encoding="utf-8",
+            # 只读。
+            "r",
+            # UTF-8。
+            encoding="utf-8",
     ) as stream:
         # 解析为字典。
         config = json.load(stream)
@@ -145,18 +144,18 @@ def _parse_args():
 
     # 用户未指定版本时自动继承检查点配置。
     if not _option_was_given(
-        # 需要检查的选项。
-        "--dataset_name"
+            # 需要检查的选项。
+            "--dataset_name"
     ):
         # 设置为保存值。
         args.dataset_name = config_dataset
 
     # 最终版本必须受支持。
     if (
-        # 参数值。
-        args.dataset_name
-        # 集合成员检查。
-        not in ALLOWED_DATASETS
+            # 参数值。
+            args.dataset_name
+            # 集合成员检查。
+            not in ALLOWED_DATASETS
     ):
         # 报告允许值。
         raise ValueError(
@@ -183,10 +182,10 @@ def _parse_args():
 
     # 逐个锁定所有会影响 state_dict shape 或前向行为的结构字段。
     for (
-        # config 字段名。
-        field,
-        # 对应命令行选项。
-        option,
+            # config 字段名。
+            field,
+            # 对应命令行选项。
+            option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 配置缺字段意味着无法完整重建训练模型。
         if field not in config:
@@ -214,10 +213,10 @@ def _parse_args():
 
         # 用户显式给了冲突值时拒绝静默覆盖。
         if (
-            # 判断是否显式提供。
-            _option_was_given(option)
-            # 并且值不同。
-            and current != configured
+                # 判断是否显式提供。
+                _option_was_given(option)
+                # 并且值不同。
+                and current != configured
         ):
             # 报告选项、请求值和保存值。
             raise RuntimeError(
@@ -257,32 +256,32 @@ def _parse_args():
     # 具体数据版本目录。
     dataset_root = (
         # 数据根规范绝对路径。
-        Path(args.data_root).resolve()
-        # ISIC2017/2018 子目录。
-        / args.dataset_name
+            Path(args.data_root).resolve()
+            # ISIC2017/2018 子目录。
+            / args.dataset_name
     )
 
     # 逐样本划分清单。
     manifest_path = (
         # 数据版本目录。
-        dataset_root
-        # CSV 文件名。
-        / "split_manifest.csv"
+            dataset_root
+            # CSV 文件名。
+            / "split_manifest.csv"
     )
     # 划分统计与协议摘要。
     summary_path = (
         # 数据版本目录。
-        dataset_root
-        # JSON 文件名。
-        / "split_summary.json"
+            dataset_root
+            # JSON 文件名。
+            / "split_summary.json"
     )
 
     # 两份元数据缺一不可。
     if (
-        # CSV 不存在。
-        not manifest_path.is_file()
-        # 或 JSON 不存在。
-        or not summary_path.is_file()
+            # CSV 不存在。
+            not manifest_path.is_file()
+            # 或 JSON 不存在。
+            or not summary_path.is_file()
     ):
         # 报告两条期望路径。
         raise FileNotFoundError(
@@ -299,20 +298,20 @@ def _parse_args():
 
     # 读取划分摘要。
     with summary_path.open(
-        # 只读。
-        "r",
-        # UTF-8。
-        encoding="utf-8",
+            # 只读。
+            "r",
+            # UTF-8。
+            encoding="utf-8",
     ) as stream:
         # JSON 转字典。
         summary = json.load(stream)
 
     # 摘要版本必须与检查点版本一致。
     if (
-        # 元数据版本。
-        summary.get("dataset_name")
-        # 与最终参数比较。
-        != args.dataset_name
+            # 元数据版本。
+            summary.get("dataset_name")
+            # 与最终参数比较。
+            != args.dataset_name
     ):
         # 防止检查点与另一版本数据混用。
         raise RuntimeError(
@@ -324,13 +323,13 @@ def _parse_args():
 
     # 划分协议也必须匹配该版本预期。
     if (
-        # 实际协议。
-        summary.get("protocol")
-        # 与映射中的预期比较。
-        != EXPECTED_PROTOCOLS[
-            # 数据集版本键。
-            args.dataset_name
-        ]
+            # 实际协议。
+            summary.get("protocol")
+            # 与映射中的预期比较。
+            != EXPECTED_PROTOCOLS[
+        # 数据集版本键。
+        args.dataset_name
+    ]
     ):
         # 阻止在不一致划分上报告不可比结果。
         raise RuntimeError(
@@ -347,16 +346,16 @@ def _parse_args():
         # 若为空则构造默认值。
         or (
             # 检查点运行目录。
-            checkpoint.parent
-            # 追加输出目录名。
-            / "{}_{}_outputs".format(
-                # val/test。
-                args.split,
-                # ISIC2017/2018。
-                args.dataset_name,
-            )
+                checkpoint.parent
+                # 追加输出目录名。
+                / "{}_{}_outputs".format(
+            # val/test。
+            args.split,
+            # ISIC2017/2018。
+            args.dataset_name,
         )
-    # 规范为绝对路径。
+        )
+        # 规范为绝对路径。
     ).resolve()
 
     # 创建输出目录。
@@ -433,7 +432,6 @@ _base.SUPPORTED_EXTENSIONS = (
 )
 # 替换评测包装函数。
 _base.evaluate_loader = _evaluate_loader
-
 
 # 直接运行时调用通用测试主流程。
 if __name__ == "__main__":

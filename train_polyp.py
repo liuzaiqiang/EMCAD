@@ -425,14 +425,14 @@ def append_history(path, row):
 
     # 追加模式打开CSV；newline=""交给csv模块管理换行。
     with open(
-        # 目标路径。
-        path,
-        # 追加模式。
-        "a",
-        # CSV推荐设置。
-        newline="",
-        # UTF-8。
-        encoding="utf-8",
+            # 目标路径。
+            path,
+            # 追加模式。
+            "a",
+            # CSV推荐设置。
+            newline="",
+            # UTF-8。
+            encoding="utf-8",
     ) as stream:
         # 按固定字段创建字典写入器。
         writer = csv.DictWriter(
@@ -470,14 +470,14 @@ def append_validation_rows(path, epoch, rows):
 
     # 追加打开文件。
     with open(
-        # 路径。
-        path,
-        # 追加。
-        "a",
-        # CSV换行。
-        newline="",
-        # 编码。
-        encoding="utf-8",
+            # 路径。
+            path,
+            # 追加。
+            "a",
+            # CSV换行。
+            newline="",
+            # 编码。
+            encoding="utf-8",
     ) as stream:
         # 创建写入器。
         writer = csv.DictWriter(
@@ -716,8 +716,8 @@ def main():
     )
 
     overlap = (
-        set(train_loader.dataset.stems)
-        & set(val_loader.dataset.stems)
+            set(train_loader.dataset.stems)
+            & set(val_loader.dataset.stems)
     )
 
     if overlap:
@@ -785,9 +785,9 @@ def main():
     }
 
     with open(
-        os.path.join(run_dir, "config.json"),
-        "w",
-        encoding="utf-8",
+            os.path.join(run_dir, "config.json"),
+            "w",
+            encoding="utf-8",
     ) as stream:
         json.dump(
             configuration,
@@ -892,8 +892,8 @@ def main():
     started = time.time()
 
     for epoch in range(
-        1,
-        args.max_epochs + 1,
+            1,
+            args.max_epochs + 1,
     ):
         model.train()
         epoch_losses = []
@@ -909,8 +909,8 @@ def main():
 
         for batch_index, (images, masks) in progress:
             if (
-                args.max_train_batches
-                and batch_index >= args.max_train_batches
+                    args.max_train_batches
+                    and batch_index >= args.max_train_batches
             ):
                 break
 
@@ -936,7 +936,7 @@ def main():
                 )
 
                 with autocast(
-                    enabled=scaler.is_enabled()
+                        enabled=scaler.is_enabled()
                 ):
                     outputs = model_outputs(
                         model,
@@ -1014,8 +1014,8 @@ def main():
         val_iou = ""
 
         if (
-            epoch % args.validate_every == 0
-            or epoch == args.max_epochs
+                epoch % args.validate_every == 0
+                or epoch == args.max_epochs
         ):
             val_rows, val_mean, _ = evaluate_loader(
                 model=model,
@@ -1069,12 +1069,12 @@ def main():
                 )
 
                 with open(
-                    os.path.join(
-                        run_dir,
-                        "best_validation.json",
-                    ),
-                    "w",
-                    encoding="utf-8",
+                        os.path.join(
+                            run_dir,
+                            "best_validation.json",
+                        ),
+                        "w",
+                        encoding="utf-8",
                 ) as stream:
                     json.dump(
                         {
@@ -1117,8 +1117,8 @@ def main():
         )
 
         if args.save_every and (
-            epoch % args.save_every == 0
-            or epoch == args.max_epochs
+                epoch % args.save_every == 0
+                or epoch == args.max_epochs
         ):
             save_checkpoint(
                 model,

@@ -1,4 +1,3 @@
-
 # PyTorch 张量与设备操作。
 import torch
 # nn 提供 DiceLoss 继承的 Module 基类。
@@ -12,7 +11,7 @@ from scipy.ndimage import zoom
 # seaborn 当前未在活动代码中调用；保留原导入。
 import seaborn as sns
 # PIL.Image 只在下方保留的可视化注释代码中引用。
-from PIL import Image 
+from PIL import Image
 # matplotlib 用于掩膜叠加图的绘制/保存依赖链。
 import matplotlib.pyplot as plt
 # overlay_masks 把多类别布尔掩膜以颜色覆盖在原始 CT 切片上。
@@ -31,6 +30,7 @@ from thop import profile
 from thop import clever_format
 # ptflops 提供另一套逐层 MACs 和参数量统计接口。
 from ptflops import get_model_complexity_info
+
 
 # ============================== 本文件阅读总览 ==============================
 # 这个文件不是一个单一用途的“工具箱”，而是把 EMCAD 项目中几个不同阶段的公共小功能集中放在了一起。阅读时可以先按下面四条链路建立地图：
@@ -74,9 +74,10 @@ def powerset(seq):
         # item 依次代表不含首元素的每个尾部子集。
         for item in powerset(seq[1:]):
             # 在 item 前加入 seq[0]，得到包含首元素的对应子集。
-            yield [seq[0]]+item
+            yield [seq[0]] + item
             # 同时产生不包含首元素的原 item。
             yield item
+
 
 # 按元素把所有参数梯度截断到 [-grad_clip, grad_clip]，避免极端梯度值。
 #
@@ -136,7 +137,6 @@ def adjust_lr(optimizer, init_lr, epoch, decay_rate=0.1, decay_epoch=30):
         param_group['lr'] *= decay
 
 
-
 # 维护标量的当前值、累计平均值和最近若干次记录。
 #
 # 调用位置：train_polyp_SLDGroup.py 创建 AvgMeter() 记录训练损失。每个原始 batch可能包含多个尺度更新，但旧脚本只在 rate==1 时调用 update；因此这里显示的是代码选择记录的那些 loss，不一定等于所有优化器 step 的严格平均值。
@@ -190,7 +190,8 @@ class AvgMeter(object):
         # 调用方可以继续 .item() 或让 tqdm/日志系统读取。若从未调用 update，
         # losses 为空，torch.stack 会报错；当前训练脚本默认会先 update 再 show。
         # 起点不小于 0；torch.stack 要求 losses 中各张量形状一致。
-        return torch.mean(torch.stack(self.losses[np.maximum(len(self.losses)-self.num, 0):]))
+        return torch.mean(torch.stack(self.losses[np.maximum(len(self.losses) - self.num, 0):]))
+
 
 # 使用 THOP 计算给定 model 和实际 input_tensor 的 FLOPs/参数量并打印。
 #
@@ -220,7 +221,8 @@ def CalParams(model, input_tensor):
     # 函数没有 return；如果其他代码需要原始数值，必须自行调用 profile，不能从
     # CalParams 的返回值获得，因为当前函数返回值是 None。
     print('[Statistics Information]\nFLOPs: {}\nParams: {}'.format(flops, params))
-    
+
+
 # 把整数类别标签 [B,H,W] 转成张量 [B,C,H,W]。
 # 这个函数服务于多分类 Dice 计算：
 # CrossEntropyLoss 可以直接接收 [B,H,W] 的整数标签，但 Dice 需要对每个类别分别做交集，因此要把一个像素的类别编号转换为 C 个 0/1 通道。
@@ -229,20 +231,20 @@ def CalParams(model, input_tensor):
 # input_tensor 预期是整数类别图，常见形状为 [B,H,W]；返回值形状为 [B,C,H,W]，类型为 float32。返回浮点而不是 bool，是因为后续要和网络概率逐元素相乘并求和。
 # dataset == 'MMWHS' 是特殊分支：该数据集的标签值不是连续的 0,1,2,...，而是 [0,205,420,...] 这样的编码；其他数据集必须提供 n_classes，并且标签值连续。
 # 当前 EMCAD 的 Synapse 训练路径主要使用 DiceLoss 类内部的同类逻辑；这个公开函数是通用/历史接口，trainer.py 虽然导入了它，但当前训练循环不一定直接调用。
-def one_hot_encoder(input_tensor,dataset,n_classes = None):
+def one_hot_encoder(input_tensor, dataset, n_classes=None):
     # 暂存每个类别的单通道布尔掩膜。
     tensor_list = []
     # MMWHS 原始标签不是连续 0..C-1，而是特定灰度编码。
-    if dataset == 'MMWHS':  
+    if dataset == 'MMWHS':
         # 不能直接对 i in range(n_classes) 比较，否则 205、420 等真实标签会被
         # 当作“未知类别”全部变成全零；因此先显式列出数据集的原始编码。
         # 这些值依次代表 MMWHS 的背景/解剖类别编码；变量名 dict 沿用原实现。
-        dict = [0,205,420,500,550,600,820,850]
+        dict = [0, 205, 420, 500, 550, 600, 820, 850]
         # 针对每个原始标签值构造一个通道。
         for i in dict:
             # 每次循环创建一个类别通道；比较运算不会改变 input_tensor 本身。
             # 相等比较得到 [B,H,W] 布尔掩膜。
-            temp_prob = input_tensor == i  
+            temp_prob = input_tensor == i
             # 在通道位置 1 增维成 [B,1,H,W] 并加入列表。
             tensor_list.append(temp_prob.unsqueeze(1))
         # 沿通道维拼接全部类别掩膜。
@@ -258,15 +260,17 @@ def one_hot_encoder(input_tensor,dataset,n_classes = None):
         # 遍历每个连续类别索引。
         for i in range(n_classes):
             # 得到当前类别的布尔掩膜。
-            temp_prob = input_tensor == i  
+            temp_prob = input_tensor == i
             # 增加类别通道维。
             tensor_list.append(temp_prob.unsqueeze(1))
         # 合并为完整独热编码。
         output_tensor = torch.cat(tensor_list, dim=1)
         # 转浮点返回。
-        return output_tensor.float()    
+        return output_tensor.float()
 
-# 多类别 soft Dice 损失；训练器将它与交叉熵按 0.7/0.3 加权。
+    # 多类别 soft Dice 损失；训练器将它与交叉熵按 0.7/0.3 加权。
+
+
 #
 # 调用位置：trainer.py 为 Synapse 构造 DiceLoss(num_classes)，在每个监督输出上调用 dice_loss(logits, label, softmax=True)；
 # 其他多分类训练代码也可以复用它。
@@ -366,7 +370,8 @@ class DiceLoss(nn.Module):
         # 在逐类计算前严格检查 batch、通道和空间形状一致。
         # 这个 assert 能尽早暴露“模型输出通道数与标签独热通道数不一致”或尺寸还原
         # 错误；否则错误可能延迟到逐元素乘法，报错位置会更难理解。
-        assert inputs.size() == target.size(), 'predict {} & target {} shape do not match'.format(inputs.size(), target.size())
+        assert inputs.size() == target.size(), 'predict {} & target {} shape do not match'.format(inputs.size(),
+                                                                                                  target.size())
         # 保存每类 Dice 数值用于调试；当前函数最终未返回该列表。
         class_wise_dice = []
         # 初始化总损失为浮点零。
@@ -388,6 +393,7 @@ class DiceLoss(nn.Module):
         # 改变总损失尺度；调用方比较实验 loss 数值时要记录权重设置。
         return loss / self.n_classes
 
+
 # 计算单个二值类别的 Dice、HD95、Jaccard 和 ASSD。
 #
 # 调用位置：test_single_volume 在每个前景类别上把 prediction==i 和 label==i
@@ -408,7 +414,7 @@ def calculate_metric_percase(pred, gt):
     # 对真实标签执行同样二值化。
     gt[gt > 0] = 1
     # 预测与真值都含前景时，几何距离指标才有正常定义。
-    if pred.sum() > 0 and gt.sum()>0:
+    if pred.sum() > 0 and gt.sum() > 0:
         # 两个 sum 都在检查“至少有一个前景像素”；如果一侧为空，HD95/ASSD 的
         # 表面距离可能没有定义，所以不能无条件调用 MedPy。
         # Dice = 2|P∩G|/(|P|+|G|)。
@@ -422,7 +428,7 @@ def calculate_metric_percase(pred, gt):
         # 按测试代码期望的固定顺序返回四项指标。
         return dice, hd95, jaccard, asd
     # 原策略把“有预测但真值为空”返回为完美重叠；这里只注释现状，不改变其语义。
-    elif pred.sum() > 0 and gt.sum()==0:
+    elif pred.sum() > 0 and gt.sum() == 0:
         # 该分支的四个返回值是人为设定的常量，不是由 pred/gt 的几何关系计算出来。
         # 如果后续研究要修正评价协议，应在实验记录中说明，否则不同版本的结果不可比。
         # 返回 (Dice, HD95, Jaccard, ASSD)。
@@ -431,7 +437,6 @@ def calculate_metric_percase(pred, gt):
     else:
         # 原策略统一返回零重叠和零距离。
         return 0, 0, 0, 0
-
 
 
 # 验证阶段的轻量版本，只计算单个二值类别 Dice。
@@ -443,21 +448,20 @@ def calculate_dice_percase(pred, gt):
     # 原地将真值二值化。
     gt[gt > 0] = 1
     # 两侧都含前景时调用 MedPy Dice。
-    if pred.sum() > 0 and gt.sum()>0:
+    if pred.sum() > 0 and gt.sum() > 0:
         # 只有 Dice 需要时，不调用表面距离算法，可以显著减少验证阶段的耗时。
         # 计算二值 Dice 系数。
         dice = metric.binary.dc(pred, gt)
         # 返回 Python/NumPy 标量 Dice。
         return dice
     # 保持与上一个函数一致的原始空类策略。
-    elif pred.sum() > 0 and gt.sum()==0:
+    elif pred.sum() > 0 and gt.sum() == 0:
         # 原代码把该情况记为 1。
         return 1
     # 其他空前景组合返回 0。
     else:
         # 返回零 Dice。
         return 0
-
 
 
 # 对一个 Synapse 病例执行逐切片推理、逐类指标计算，并可保存可视化和 NIfTI。
@@ -480,18 +484,19 @@ def calculate_dice_percase(pred, gt):
 # net.eval() 在每张切片循环内重复调用，语义正确但有少量额外开销；
 # 三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
 # 这些历史行为，只在注释中把它们标明，便于你沿调用链排查问题。
-def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1, class_names=None):
+def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,
+                       class_names=None):
     # DataLoader 增加了 batch 维；去掉 batch 后搬到 CPU、断开计算图并转为 NumPy。
     # 评估函数不需要继续建立 autograd 图；detach() 解除历史计算图引用，cpu() 让
     # 后面的 NumPy、SciPy 和 SimpleITK 接口可以使用。若传入的是 [D,H,W] 而不是
     # [1,D,H,W]，squeeze(0) 仍可能误删深度维，调用方必须保持约定的 batch 形状。
     image, label = image.squeeze(0).cpu().detach().numpy(), label.squeeze(0).cpu().detach().numpy()
     # 未提供器官名称时，用类别索引 1..C-1 作为图例标签。
-    if class_names==None:
+    if class_names == None:
         # class_names 只影响可视化图例，不影响 prediction 的类别编号和指标计算。
         # 因此没有名称时使用 1..classes-1 作为占位标签，跳过背景 0。
         # 背景类别 0 不参与器官图例。
-        mask_labels = np.arange(1,classes)
+        mask_labels = np.arange(1, classes)
     # 提供名称时直接用名称列表作为叠加图标签。
     else:
         # 例如 Synapse 的 spleen、right kidney 等八个前景名称。
@@ -501,12 +506,13 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
     # 用同一套 cmap 同时绘制 ground truth 和 prediction，保证颜色能逐类对应。
     cmaps = mcolors.CSS4_COLORS
     # 为最多十三个前景类别预设对比明显的颜色顺序。
-    my_colors=['red','darkorange','yellow','forestgreen','blue','purple','magenta','cyan','deeppink', 'chocolate', 'olive','deepskyblue','darkviolet']
+    my_colors = ['red', 'darkorange', 'yellow', 'forestgreen', 'blue', 'purple', 'magenta', 'cyan', 'deeppink',
+                 'chocolate', 'olive', 'deepskyblue', 'darkviolet']
     # 只保留前 C-1 个指定颜色，构造 overlay_masks 接收的颜色字典。
     # sorted(cmaps.keys()) 只是建立稳定的字典顺序；真正选中的颜色由 my_colors
     # 过滤。classes 超过预设颜色数量时，颜色字典不会自动扩容，可能导致图例颜色
     # 不足，这是当前可视化配置的边界条件。
-    cmap = {k: cmaps[k] for k in sorted(cmaps.keys()) if k in my_colors[:classes-1]}
+    cmap = {k: cmaps[k] for k in sorted(cmaps.keys()) if k in my_colors[:classes - 1]}
     # 三维输入按 [D,H,W] 逐轴向切片送入二维 EMCAD 网络。
     if len(image.shape) == 3:
         # 三维分支是病例级主要路径。此时 image/label 通常为 [D,H,W]；网络本身仍
@@ -566,12 +572,12 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # 三维缓存中，循环结束后 prediction 就是整个病例的预测标签体。
                 prediction[ind] = pred
                 # saving the final output as a PNG file
-                #print(test_save_path + '/'+case + '' +str(ind))
-                #Image.fromarray((pred/8 * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_pred.png')
-                #Image.fromarray((image[ind, :, :] * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_img.png')
-                #Image.fromarray((label[ind, :, :]/8 * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_gt.png')
-                #cmap = plt.cm.tab20(np.arange(len(mask_labels)))
-                
+                # print(test_save_path + '/'+case + '' +str(ind))
+                # Image.fromarray((pred/8 * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_pred.png')
+                # Image.fromarray((image[ind, :, :] * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_img.png')
+                # Image.fromarray((label[ind, :, :]/8 * 255).astype(np.uint8)).save(test_save_path + '/'+case + '' +str(ind)+'_gt.png')
+                # cmap = plt.cm.tab20(np.arange(len(mask_labels)))
+
                 # 取当前切片的真实多类别标签。
                 lbl = label[ind, :, :]
                 # 收集每个前景类别的真实二值掩膜。
@@ -581,7 +587,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # 跳过背景 0，遍历类别 1..C-1。
                 for i in range(1, classes):
                     # 与 i 比较得到当前器官的布尔真值掩膜。
-                    masks.append(lbl==i)
+                    masks.append(lbl == i)
                 # 收集每个前景类别的预测二值掩膜。
                 # preds_o 与 masks 必须使用完全相同的类别顺序，否则图例中的颜色会
                 # 对不上器官，造成看图时的误判；因此两个循环都从 1 遍历到 classes-1。
@@ -589,8 +595,8 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # 与真值使用相同类别顺序，确保图例颜色对应。
                 for i in range(1, classes):
                     # 当前器官预测位置为 True。
-                    preds_o.append(pred==i)
-                
+                    preds_o.append(pred == i)
+
                 # 把真实器官掩膜半透明叠加到原始 CT 切片，返回 Matplotlib figure。
                 # mask_alpha=0.5 让底层灰度 CT 仍可见；这一步只生成检查用图，不参与
                 # 指标计算，也不会改变 image、lbl 或 prediction。
@@ -601,9 +607,10 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # 以病例名和切片序号保存真值叠加图；当前代码要求 test_save_path 非 None 且目录已存在。
                 # 文件名包含 case 和 ind，便于把图重新对应到具体病例/切片；bbox_inches
                 # 去除多余边缘，dpi=300 适合论文前的人工质量检查，但会增加磁盘写入时间。
-                fig_gt.savefig(test_save_path + '/' + case + '_' +str(ind) + '_gt.png', bbox_inches="tight", dpi=300)
+                fig_gt.savefig(test_save_path + '/' + case + '_' + str(ind) + '_gt.png', bbox_inches="tight", dpi=300)
                 # 保存对应预测叠加图，300 dpi 用于较清晰的结果检查。
-                fig_pred.savefig(test_save_path + '/' + case + '_' +str(ind) + '_pred.png', bbox_inches="tight", dpi=300)
+                fig_pred.savefig(test_save_path + '/' + case + '_' + str(ind) + '_pred.png', bbox_inches="tight",
+                                 dpi=300)
 
     # 二维输入分支直接推理一张图，不执行逐深度循环。
     else:
@@ -632,7 +639,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
     # 保存当前病例每个前景类别的四指标元组。
     # prediction 和 label 都是整数类别图；prediction == i 会生成第 i 类的 bool
     # 掩膜，再由 calculate_metric_percase 计算一个 (Dice, HD95, Jaccard, ASD) 元组。
-    metric_list = []    
+    metric_list = []
     # 背景不纳入论文常见的器官平均指标，故从类别 1 开始。
     for i in range(1, classes):
         # 从 1 开始是有意跳过背景：医学分割报告通常关心器官/病灶前景，背景面积
@@ -663,14 +670,13 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
         # 写出预测标签压缩 NIfTI。
         # 三个文件使用同一病例前缀，方便在 ITK-SNAP 等软件中同时打开并核对 CT、
         # 预测和 ground truth；预测/标签使用 float32 保存，读取时仍应按离散类别解释。
-        sitk.WriteImage(prd_itk, test_save_path + '/'+case + "_pred.nii.gz")
+        sitk.WriteImage(prd_itk, test_save_path + '/' + case + "_pred.nii.gz")
         # 写出归一化 CT 压缩 NIfTI。
-        sitk.WriteImage(img_itk, test_save_path + '/'+ case + "_img.nii.gz")
+        sitk.WriteImage(img_itk, test_save_path + '/' + case + "_img.nii.gz")
         # 写出真实标签压缩 NIfTI。
-        sitk.WriteImage(lab_itk, test_save_path + '/'+ case + "_gt.nii.gz")
+        sitk.WriteImage(lab_itk, test_save_path + '/' + case + "_gt.nii.gz")
     # 返回长度 C-1 的逐类指标列表，外层 test_synapse.py 再按病例求平均。
     return metric_list
-
 
 
 # 验证阶段的病例级推理：流程与 test_single_volume 类似，但只返回逐类 Dice 且不保存图像。
@@ -780,8 +786,6 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
     return metric_list
 
 
-
-
 # 对 HWC 数组做左右镜像；用于下面的测试时增强。
 #
 # 输入约定是 NumPy 的 HWC（Height, Width, Channel）布局，而不是 PyTorch 常见的CHW。
@@ -796,7 +800,6 @@ def horizontal_flip(image):
     return image
 
 
-
 # 对 HWC 数组做上下镜像。
 # 这与 horizontal_flip 对称：只反转高度轴，宽度和通道不变。TTA 使用它来构造一个与训练样本不同方向的输入，检验模型是否对简单的空间翻转更稳健。
 def vertical_flip(image):
@@ -805,8 +808,6 @@ def vertical_flip(image):
     image = image[::-1, :, :]
     # 返回翻转结果。
     return image
-
-
 
 
 # Keras 风格 predict 接口的三视图测试时增强；当前 PyTorch Synapse 路径没有调用。
@@ -851,8 +852,6 @@ def tta_model(model, image):
     return mean_mask
 
 
-
-
 # 使用随机输入统计模型 FLOPs、THOP 参数量和直接求和参数量。
 #
 # 调用位置：train_polyp_SLDGroup.py 启动每个 run 时调用 cal_params_flops(model,opt.img_size, logging)，用于把模型复杂度写入日志。
@@ -870,21 +869,20 @@ def cal_params_flops(model, size, logger):
     # 当前模式都必须兼容；统计前最好确保没有正在进行的训练梯度累积。
     flops, params = profile(model, inputs=(input,))
     # 以十亿为单位打印 FLOPs。
-    print('flops',flops/1e9)			## 打印计算量
+    print('flops', flops / 1e9)  ## 打印计算量
     # 以百万为单位打印 THOP 参数量。
-    print('params',params/1e6)			## 打印参数量
+    print('params', params / 1e6)  ## 打印参数量
 
     # 直接累计 model.parameters() 中每个张量的元素数量。
     # 这是最直观的参数量统计：每个标量权重算一个参数；它不依赖 THOP 是否认识
     # 某个自定义层，因此可与 THOP 返回的 params 互相核对。
     total = sum(p.numel() for p in model.parameters())
     # 打印百万参数规模。
-    print("Total params: %.2fM" % (total/1e6))
+    print("Total params: %.2fM" % (total / 1e6))
     # 把同一统计写入调用方日志。
     # logger 通常是 logging 模块；写日志后可在实验结果中追溯当时使用的模型规模，
     # 避免只在终端打印而丢失记录。
-    logger.info(f'flops: {flops/1e9}, params: {params/1e6}, Total params: : {total/1e6:.4f}')
-
+    logger.info(f'flops: {flops / 1e9}, params: {params / 1e6}, Total params: : {total / 1e6:.4f}')
 
 
 # Example function to calculate and print GMACs and parameter count for a given model
@@ -899,14 +897,14 @@ def print_model_stats(model, input_size=(3, 224, 224)):
     total_params = sum(p.numel() for p in model.parameters())
     # 输出精确参数个数。
     print(f'Model created, param count: {total_params}')
-    
+
     # Calculate GMACs using ptflops
     # ptflops 按给定 CHW 输入尺寸分析模型，并输出逐层统计。
     # as_strings=True 让返回值直接带 K/M/G 等单位，便于打印；
     # print_per_layer_stat=True 会输出每层详情，适合定位计算量主要来自哪里，但会
     # 产生较多终端输出。这里的 params 字符串可能与上面的精确整数略有格式差异。
     macs, params = get_model_complexity_info(model, input_size, as_strings=True, print_per_layer_stat=True)
-    
+
     # Display GMACs and params
     # 打印 ptflops 返回的可读 MACs 和参数量字符串。
     print(f'Model: {macs} GMACs, {params} parameters')

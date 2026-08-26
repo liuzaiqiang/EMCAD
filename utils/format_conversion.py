@@ -3,7 +3,7 @@ import os
 # shutil 当前未被本文件调用；保留原始导入，仅说明其通常用于文件复制/移动。
 import shutil
 # libtiff.TIFF 用于读取 TIFF 掩膜；依赖需要通过项目注释中的 pip 命令安装。
-from libtiff import TIFF    # pip install libtiff
+from libtiff import TIFF  # pip install libtiff
 # scipy.misc 提供旧版 imsave 接口；代码使用它把读取出的数组写成 PNG/JPG。
 from scipy import misc
 # random 用于无放回地随机抽取数据索引。

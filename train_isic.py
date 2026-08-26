@@ -14,7 +14,6 @@ import train_polyp as _base
 # 只替换为 ISIC 严格图像/掩膜配对加载器。
 from utils.dataloader_isic import get_loader
 
-
 # 允许的两个 ISIC 数据集版本。
 ALLOWED_DATASETS = {
     # 使用官方 train/val/test 划分的 ISIC 2017。
@@ -112,32 +111,32 @@ def _parse_args():
     # 准备后的具体版本根目录。
     dataset_root = (
         # 规范化公共 data_root。
-        Path(args.data_root).resolve()
-        # 追加 ISIC2017/ISIC2018。
-        / args.dataset_name
+            Path(args.data_root).resolve()
+            # 追加 ISIC2017/ISIC2018。
+            / args.dataset_name
     )
 
     # 逐样本划分清单路径。
     manifest_path = (
         # 数据版本根。
-        dataset_root
-        # 清单文件名。
-        / "split_manifest.csv"
+            dataset_root
+            # 清单文件名。
+            / "split_manifest.csv"
     )
     # 划分统计和协议元数据路径。
     summary_path = (
         # 数据版本根。
-        dataset_root
-        # 摘要文件名。
-        / "split_summary.json"
+            dataset_root
+            # 摘要文件名。
+            / "split_summary.json"
     )
 
     # 两份元数据都必须存在，确保训练使用可追踪固定划分。
     if (
-        # 检查 CSV。
-        not manifest_path.is_file()
-        # 或检查 JSON。
-        or not summary_path.is_file()
+            # 检查 CSV。
+            not manifest_path.is_file()
+            # 或检查 JSON。
+            or not summary_path.is_file()
     ):
         # 告知先运行准备脚本并列出缺失路径。
         raise FileNotFoundError(
@@ -156,20 +155,20 @@ def _parse_args():
 
     # 以 UTF-8 读取 JSON 摘要。
     with summary_path.open(
-        # 只读文本模式。
-        "r",
-        # 编码。
-        encoding="utf-8",
+            # 只读文本模式。
+            "r",
+            # 编码。
+            encoding="utf-8",
     ) as stream:
         # 反序列化为字典。
         summary = json.load(stream)
 
     # 摘要声明的数据集必须与命令行版本一致。
     if (
-        # 读取元数据字段。
-        summary.get("dataset_name")
-        # 与请求版本比较。
-        != args.dataset_name
+            # 读取元数据字段。
+            summary.get("dataset_name")
+            # 与请求版本比较。
+            != args.dataset_name
     ):
         # 报告期望和实际。
         raise RuntimeError(
@@ -192,10 +191,10 @@ def _parse_args():
 
     # 实际准备协议必须严格匹配。
     if (
-        # 摘要中的 protocol。
-        summary.get("protocol")
-        # 与预期比较。
-        != expected_protocol
+            # 摘要中的 protocol。
+            summary.get("protocol")
+            # 与预期比较。
+            != expected_protocol
     ):
         # 阻止在不同划分协议上混合比较实验。
         raise RuntimeError(
@@ -213,11 +212,11 @@ def _parse_args():
     # 与 train_polyp.main 最终写入位置一致地预先构造运行目录。
     run_dir = (
         # 输出根绝对路径。
-        Path(args.output_dir).resolve()
-        # 数据集版本子目录。
-        / args.dataset_name
-        # 当前运行名子目录。
-        / args.run_name
+            Path(args.output_dir).resolve()
+            # 数据集版本子目录。
+            / args.dataset_name
+            # 当前运行名子目录。
+            / args.run_name
     )
 
     # 创建运行目录及父目录；已存在时不报错。
@@ -280,7 +279,6 @@ _base.parse_args = _parse_args
 _base.get_loader = get_loader
 # 替换为仅改日志名称的验证包装器。
 _base.evaluate_loader = _evaluate_loader
-
 
 # 直接执行本文件时进入 train_polyp 的通用 main；被导入时只完成定义和补丁。
 if __name__ == "__main__":

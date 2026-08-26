@@ -19,7 +19,6 @@ from utils.dataloader_busi import (
     get_loader,
 )
 
-
 # 训练/测试必须共同使用的固定划分协议。
 EXPECTED_PROTOCOL = (
     # 图像级分层80/10/10。
@@ -132,13 +131,13 @@ def _sha256_file(path):
     with Path(path).open("rb") as stream:
         # 每次读1MiB直到EOF。
         for block in iter(
-            # 延迟读函数。
-            lambda: stream.read(
-                # 块大小。
-                1024 * 1024
-            ),
-            # EOF 哨兵。
-            b"",
+                # 延迟读函数。
+                lambda: stream.read(
+                    # 块大小。
+                    1024 * 1024
+                ),
+                # EOF 哨兵。
+                b"",
         ):
             # 更新摘要。
             digest.update(block)
@@ -165,8 +164,8 @@ def _parse_args():
 
     # 未显式指定数据根时使用 BUSI 目录。
     if not _option_was_given(
-        # 检查选项。
-        "--data_root"
+            # 检查选项。
+            "--data_root"
     ):
         # 设置默认路径。
         args.data_root = (
@@ -178,15 +177,15 @@ def _parse_args():
     checkpoint = Path(
         # 参数字符串。
         args.checkpoint
-    # 规范路径。
+        # 规范路径。
     ).resolve()
 
     # 训练配置与检查点同目录。
     config_path = (
         # 检查点父目录。
-        checkpoint.parent
-        # 配置文件。
-        / "config.json"
+            checkpoint.parent
+            # 配置文件。
+            / "config.json"
     )
 
     # 缺少 config 无法安全重建网络。
@@ -203,10 +202,10 @@ def _parse_args():
 
     # 读取训练配置。
     with config_path.open(
-        # 只读。
-        "r",
-        # UTF-8。
-        encoding="utf-8",
+            # 只读。
+            "r",
+            # UTF-8。
+            encoding="utf-8",
     ) as stream:
         # JSON转字典。
         config = json.load(stream)
@@ -219,8 +218,8 @@ def _parse_args():
 
     # 用户未传 dataset_name 时继承检查点。
     if not _option_was_given(
-        # 检查选项。
-        "--dataset_name"
+            # 检查选项。
+            "--dataset_name"
     ):
         # 设置参数。
         args.dataset_name = (
@@ -230,10 +229,10 @@ def _parse_args():
 
     # 检查点和请求必须都为 BUSI。
     if (
-        # 请求值检查。
-        args.dataset_name != "BUSI"
-        # 或保存值检查。
-        or config_dataset != "BUSI"
+            # 请求值检查。
+            args.dataset_name != "BUSI"
+            # 或保存值检查。
+            or config_dataset != "BUSI"
     ):
         # 报告两边值。
         raise RuntimeError(
@@ -252,10 +251,10 @@ def _parse_args():
 
     # 逐个恢复所有模型结构字段。
     for (
-        # config字段。
-        field,
-        # 命令行选项。
-        option,
+            # config字段。
+            field,
+            # 命令行选项。
+            option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 缺字段无法确定 state_dict shape。
         if field not in config:
@@ -283,10 +282,10 @@ def _parse_args():
 
         # 用户显式给冲突结构时拒绝运行。
         if (
-            # 是否显式提供。
-            _option_was_given(option)
-            # 是否与训练不同。
-            and current != configured
+                # 是否显式提供。
+                _option_was_given(option)
+                # 是否与训练不同。
+                and current != configured
         ):
             # 报告冲突。
             raise RuntimeError(
@@ -343,20 +342,20 @@ def _parse_args():
 
     # 用户显式阈值与保存值冲突时拒绝静默覆盖。
     if (
-        # 检查选项是否提供。
-        _option_was_given(
-            # 阈值选项。
-            "--threshold"
-        )
-        # 且浮点差异大于数值容差。
-        and abs(
-            # 当前阈值。
-            float(args.threshold)
-            # 减保存阈值。
-            - float(saved_threshold)
-        )
-        # 绝对容差。
-        > 1e-12
+            # 检查选项是否提供。
+            _option_was_given(
+                # 阈值选项。
+                "--threshold"
+            )
+            # 且浮点差异大于数值容差。
+            and abs(
+        # 当前阈值。
+        float(args.threshold)
+        # 减保存阈值。
+        - float(saved_threshold)
+    )
+            # 绝对容差。
+            > 1e-12
     ):
         # 报告冲突。
         raise RuntimeError(
@@ -382,30 +381,30 @@ def _parse_args():
     # 当前准备数据 BUSI 根。
     dataset_root = (
         # 公共数据根绝对路径。
-        Path(args.data_root).resolve()
-        # BUSI 子目录。
-        / "BUSI"
+            Path(args.data_root).resolve()
+            # BUSI 子目录。
+            / "BUSI"
     )
 
     # 样本清单。
     manifest_path = (
         # 拼固定文件名。
-        dataset_root / "manifest.csv"
+            dataset_root / "manifest.csv"
     )
     # 划分摘要。
     summary_path = (
         # 数据根。
-        dataset_root
-        # 文件名。
-        / "split_summary.json"
+            dataset_root
+            # 文件名。
+            / "split_summary.json"
     )
 
     # 两份准备元数据必须存在。
     if (
-        # 清单检查。
-        not manifest_path.is_file()
-        # 摘要检查。
-        or not summary_path.is_file()
+            # 清单检查。
+            not manifest_path.is_file()
+            # 摘要检查。
+            or not summary_path.is_file()
     ):
         # 报告路径。
         raise FileNotFoundError(
@@ -422,20 +421,20 @@ def _parse_args():
 
     # 读取当前划分摘要。
     with summary_path.open(
-        # 只读。
-        "r",
-        # UTF-8。
-        encoding="utf-8",
+            # 只读。
+            "r",
+            # UTF-8。
+            encoding="utf-8",
     ) as stream:
         # JSON转字典。
         summary = json.load(stream)
 
     # 摘要必须属于 BUSI。
     if (
-        # 字段值。
-        summary.get("dataset_name")
-        # 与常量比较。
-        != "BUSI"
+            # 字段值。
+            summary.get("dataset_name")
+            # 与常量比较。
+            != "BUSI"
     ):
         # 拒绝错误数据目录。
         raise RuntimeError(
@@ -447,10 +446,10 @@ def _parse_args():
 
     # 当前划分协议必须与训练协议相同。
     if (
-        # 当前协议。
-        summary.get("protocol")
-        # 预期协议。
-        != EXPECTED_PROTOCOL
+            # 当前协议。
+            summary.get("protocol")
+            # 预期协议。
+            != EXPECTED_PROTOCOL
     ):
         # 报告不匹配。
         raise RuntimeError(
@@ -462,10 +461,10 @@ def _parse_args():
 
     # 当前总数必须是固定517/65/65。
     if (
-        # 摘要计数。
-        summary.get("counts")
-        # 预期计数。
-        != EXPECTED_COUNTS
+            # 摘要计数。
+            summary.get("counts")
+            # 预期计数。
+            != EXPECTED_COUNTS
     ):
         # 拒绝数据缺失/替换。
         raise RuntimeError(
@@ -477,10 +476,10 @@ def _parse_args():
 
     # 当前类别分布也必须一致。
     if (
-        # 摘要分布。
-        summary.get("class_counts")
-        # 预期分布。
-        != EXPECTED_CLASS_COUNTS
+            # 摘要分布。
+            summary.get("class_counts")
+            # 预期分布。
+            != EXPECTED_CLASS_COUNTS
     ):
         # 报告无效。
         raise RuntimeError(
@@ -498,13 +497,13 @@ def _parse_args():
 
     # 当前文件内容必须与摘要记录一致。
     if (
-        # 记录值。
-        summary.get(
-            # 字段名。
-            "manifest_file_sha256"
-        )
-        # 与当前值比较。
-        != current_manifest_sha256
+            # 记录值。
+            summary.get(
+                # 字段名。
+                "manifest_file_sha256"
+            )
+            # 与当前值比较。
+            != current_manifest_sha256
     ):
         # 说明清单文件已改变。
         raise RuntimeError(
@@ -518,16 +517,16 @@ def _parse_args():
 
     # 训练 config 中的规范清单哈希必须与当前摘要一致。
     if (
-        # 训练保存值。
-        config.get(
-            # 字段名。
-            "split_manifest_sha256"
-        )
-        # 与当前数据值比较。
-        != summary.get(
-            # 当前字段名。
-            "manifest_sha256"
-        )
+            # 训练保存值。
+            config.get(
+                # 字段名。
+                "split_manifest_sha256"
+            )
+            # 与当前数据值比较。
+            != summary.get(
+        # 当前字段名。
+        "manifest_sha256"
+    )
     ):
         # 防止在不同划分上测试。
         raise RuntimeError(
@@ -544,14 +543,14 @@ def _parse_args():
         # 否则构造默认。
         or (
             # 检查点运行目录。
-            checkpoint.parent
-            # 追加目录名。
-            / "{}_BUSI_outputs".format(
-                # val/test。
-                args.split
-            )
+                checkpoint.parent
+                # 追加目录名。
+                / "{}_BUSI_outputs".format(
+            # val/test。
+            args.split
         )
-    # 规范绝对路径。
+        )
+        # 规范绝对路径。
     ).resolve()
 
     # 创建输出目录。
@@ -607,10 +606,10 @@ def _parse_args():
 
 # 包装通用评测函数，替换显示名称。
 def _evaluate_loader(
-    # 位置参数。
-    *args,
-    # 关键字参数。
-    **kwargs,
+        # 位置参数。
+        *args,
+        # 关键字参数。
+        **kwargs,
 ):
     # 读取描述。
     description = kwargs.get(
@@ -654,7 +653,6 @@ _base.evaluate_loader = (
     # 包装函数。
     _evaluate_loader
 )
-
 
 # 直接运行时启动通用测试主流程。
 if __name__ == "__main__":

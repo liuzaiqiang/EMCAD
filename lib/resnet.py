@@ -11,13 +11,13 @@ import torch.nn as nn
 import math
 # model_zoo 从 PyTorch 官方 URL 下载并缓存 ImageNet 预训练参数。
 import torch.utils.model_zoo as model_zoo
-#import torchsummary
+
+# import torchsummary
 
 # 控制 `from lib.resnet import *` 时公开的构造器名称。
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
            # 延续上一行并加入 ResNet-152。
            'resnet152']
-
 
 # PyTorch 官方 ImageNet 权重地址；这些权重来自 ResNet，不是 EMCAD 论文训练产生的。
 model_urls = {
@@ -170,16 +170,16 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
 
     # block 决定基础/瓶颈结构，layers 给出四个 stage 的块数。
-    def __init__(self, block, layers, num_classes=1000,deep_base=False,stem_width=32):
+    def __init__(self, block, layers, num_classes=1000, deep_base=False, stem_width=32):
         # 标准 stem 输出64通道；deep_base 最后输出 2*stem_width。
-        self.inplanes = stem_width*2 if deep_base else 64
-        
+        self.inplanes = stem_width * 2 if deep_base else 64
+
         # 初始化 Module；self.inplanes 只是普通属性，可在 super 前赋值。
         super(ResNet, self).__init__()
         # deep_base 用三个 3x3 卷积替代标准 7x7 stem。
         if deep_base:
             # 顺序堆叠三层卷积。
-            self.conv1= nn.Sequential(
+            self.conv1 = nn.Sequential(
                 # 第一层把 RGB 映射到 stem_width，并下采样2倍。
                 nn.Conv2d(3, stem_width, kernel_size=3, stride=2, padding=1, bias=False),
                 # 第一层 BN。
@@ -193,7 +193,7 @@ class ResNet(nn.Module):
                 # 第二层 ReLU。
                 nn.ReLU(inplace=True),
                 # 第三层扩到2*stem_width；外部 bn1/relu 会处理其输出。
-                nn.Conv2d(stem_width, stem_width*2, kernel_size=3, stride=1, padding=1, bias=False),
+                nn.Conv2d(stem_width, stem_width * 2, kernel_size=3, stride=1, padding=1, bias=False),
             )
         # 默认走经典 ResNet 7x7 stem。
         else:
@@ -201,7 +201,7 @@ class ResNet(nn.Module):
             self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
                                    # 后接 BN，因此禁用 bias。
                                    bias=False)
-        
+
         # 归一化 stem 输出，通道数由 self.inplanes 决定。
         self.bn1 = nn.BatchNorm2d(self.inplanes)
         # stem 激活。
@@ -276,7 +276,7 @@ class ResNet(nn.Module):
         x = self.relu(x)
         # 最大池化到 H/4、W/4。
         x = self.maxpool(x)
-        
+
         # 依次保存由浅到深的四级特征，接口与 PVTv2 forward 一致。
         features = []
 
@@ -334,13 +334,12 @@ def resnet34(pretrained=False, **kwargs):
     # 原代码创建模型参数字典但活动加载逻辑未使用它；只保留现状。
     model_dict = model.state_dict()
 
-
     # 可选加载 ImageNet 预训练权重。
     if pretrained:
         # 控制台提示开始加载。
         print('Using pretrained weight!')
         # 从官方 URL 取得参数；行尾英文注释是原代码遗留。
-        pretrained_dict=model_zoo.load_url(model_urls['resnet34'])# Modify 'model_dir' according to your own path
+        pretrained_dict = model_zoo.load_url(model_urls['resnet34'])  # Modify 'model_dir' according to your own path
         # 控制台提示下载/读取完成。
         print('Petrain Model Have been loaded!')
         # pretrained_dict =  {k: v for k, v in pretrained_dict.items() if k in model_dict}

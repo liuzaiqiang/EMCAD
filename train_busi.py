@@ -19,7 +19,6 @@ from utils.dataloader_busi import (
     get_loader,
 )
 
-
 # prepare_busi_splits.py 写入摘要的预期划分协议。
 EXPECTED_PROTOCOL = (
     # 图像级分层 80/10/10；当前元数据会显式记录不是患者级划分。
@@ -98,13 +97,13 @@ def _sha256_file(path):
     with Path(path).open("rb") as stream:
         # 反复读块直到空字节串。
         for block in iter(
-            # 延迟读取函数。
-            lambda: stream.read(
-                # 1MiB。
-                1024 * 1024
-            ),
-            # EOF 哨兵。
-            b"",
+                # 延迟读取函数。
+                lambda: stream.read(
+                    # 1MiB。
+                    1024 * 1024
+                ),
+                # EOF 哨兵。
+                b"",
         ):
             # 更新哈希。
             digest.update(block)
@@ -120,8 +119,8 @@ def _parse_args():
 
     # 未指定数据根时使用 BUSI 准备目录。
     if not _option_was_given(
-        # 检查选项。
-        "--data_root"
+            # 检查选项。
+            "--data_root"
     ):
         # 设置默认值。
         args.data_root = (
@@ -131,16 +130,16 @@ def _parse_args():
 
     # 未指定名称时固定 BUSI。
     if not _option_was_given(
-        # 检查选项。
-        "--dataset_name"
+            # 检查选项。
+            "--dataset_name"
     ):
         # 设置名称。
         args.dataset_name = "BUSI"
 
     # 未指定输出目录时使用 model_pth 根。
     if not _option_was_given(
-        # 检查选项。
-        "--output_dir"
+            # 检查选项。
+            "--output_dir"
     ):
         # 设置输出根。
         args.output_dir = (
@@ -150,8 +149,8 @@ def _parse_args():
 
     # EMCAD 论文 BUSI 实验输入固定为256x256；用户未覆盖时设256。
     if not _option_was_given(
-        # 检查尺寸选项。
-        "--img_size"
+            # 检查尺寸选项。
+            "--img_size"
     ):
         # 设置固定尺寸。
         args.img_size = 256
@@ -201,30 +200,30 @@ def _parse_args():
     # 准备数据具体 BUSI 根目录。
     dataset_root = (
         # data_root 绝对路径。
-        Path(args.data_root).resolve()
-        # BUSI 子目录。
-        / "BUSI"
+            Path(args.data_root).resolve()
+            # BUSI 子目录。
+            / "BUSI"
     )
 
     # 样本清单路径。
     manifest_path = (
         # 拼 manifest.csv。
-        dataset_root / "manifest.csv"
+            dataset_root / "manifest.csv"
     )
     # 划分摘要路径。
     summary_path = (
         # 数据根。
-        dataset_root
-        # 摘要文件。
-        / "split_summary.json"
+            dataset_root
+            # 摘要文件。
+            / "split_summary.json"
     )
 
     # 两份准备元数据必须同时存在。
     if (
-        # 清单检查。
-        not manifest_path.is_file()
-        # 摘要检查。
-        or not summary_path.is_file()
+            # 清单检查。
+            not manifest_path.is_file()
+            # 摘要检查。
+            or not summary_path.is_file()
     ):
         # 告知运行准备脚本并列出路径。
         raise FileNotFoundError(
@@ -245,20 +244,20 @@ def _parse_args():
 
     # 读取 UTF-8 JSON 摘要。
     with summary_path.open(
-        # 只读。
-        "r",
-        # 编码。
-        encoding="utf-8",
+            # 只读。
+            "r",
+            # 编码。
+            encoding="utf-8",
     ) as stream:
         # 转字典。
         summary = json.load(stream)
 
     # 摘要必须声明 BUSI。
     if (
-        # 读取字段。
-        summary.get("dataset_name")
-        # 与常量比较。
-        != "BUSI"
+            # 读取字段。
+            summary.get("dataset_name")
+            # 与常量比较。
+            != "BUSI"
     ):
         # 拒绝拿其他数据集摘要训练。
         raise RuntimeError(
@@ -270,10 +269,10 @@ def _parse_args():
 
     # 划分协议必须与本代码预期一致。
     if (
-        # 实际协议。
-        summary.get("protocol")
-        # 预期协议。
-        != EXPECTED_PROTOCOL
+            # 实际协议。
+            summary.get("protocol")
+            # 预期协议。
+            != EXPECTED_PROTOCOL
     ):
         # 报告双方值。
         raise RuntimeError(
@@ -290,10 +289,10 @@ def _parse_args():
 
     # 三个划分总数必须完全一致。
     if (
-        # 摘要计数。
-        summary.get("counts")
-        # 与固定计数比较。
-        != EXPECTED_COUNTS
+            # 摘要计数。
+            summary.get("counts")
+            # 与固定计数比较。
+            != EXPECTED_COUNTS
     ):
         # 报告不一致。
         raise RuntimeError(
@@ -310,10 +309,10 @@ def _parse_args():
 
     # 每个划分的良性/恶性数量也必须一致。
     if (
-        # 实际类别分布。
-        summary.get("class_counts")
-        # 与预期比较。
-        != EXPECTED_CLASS_COUNTS
+            # 实际类别分布。
+            summary.get("class_counts")
+            # 与预期比较。
+            != EXPECTED_CLASS_COUNTS
     ):
         # 报告分布不一致。
         raise RuntimeError(
@@ -339,13 +338,13 @@ def _parse_args():
 
     # 文件哈希必须与摘要生成时记录值一致。
     if (
-        # 摘要字段。
-        summary.get(
-            # 文件内容哈希键。
-            "manifest_file_sha256"
-        )
-        # 与当前计算值比较。
-        != manifest_file_sha256
+            # 摘要字段。
+            summary.get(
+                # 文件内容哈希键。
+                "manifest_file_sha256"
+            )
+            # 与当前计算值比较。
+            != manifest_file_sha256
     ):
         # 表示元数据文件被替换或修改。
         raise RuntimeError(
@@ -363,15 +362,15 @@ def _parse_args():
 
     # SHA-256 十六进制应为64字符字符串。
     if (
-        # 类型检查。
-        not isinstance(
-            # 值。
-            manifest_sha256,
-            # 期望类型。
-            str,
-        )
-        # 或长度检查。
-        or len(manifest_sha256) != 64
+            # 类型检查。
+            not isinstance(
+                # 值。
+                manifest_sha256,
+                # 期望类型。
+                str,
+            )
+            # 或长度检查。
+            or len(manifest_sha256) != 64
     ):
         # 拒绝无效实验指纹。
         raise RuntimeError(
@@ -418,19 +417,19 @@ def _parse_args():
     # 最终运行目录与通用训练主函数规则一致。
     run_dir = (
         # 输出根绝对路径。
-        Path(args.output_dir).resolve()
-        # BUSI 子目录。
-        / args.dataset_name
-        # 当前运行名。
-        / args.run_name
+            Path(args.output_dir).resolve()
+            # BUSI 子目录。
+            / args.dataset_name
+            # 当前运行名。
+            / args.run_name
     )
 
     # 已有非空目录意味着可能覆盖旧实验，直接拒绝。
     if (
-        # 目录存在。
-        run_dir.exists()
-        # 且至少含一个条目。
-        and any(run_dir.iterdir())
+            # 目录存在。
+            run_dir.exists()
+            # 且至少含一个条目。
+            and any(run_dir.iterdir())
     ):
         # 报告目标目录。
         raise FileExistsError(
@@ -475,10 +474,10 @@ def _parse_args():
 
 # 包装通用验证函数，只把显示名称改成 BUSI。
 def _evaluate_loader(
-    # 任意位置参数。
-    *args,
-    # 任意关键字参数。
-    **kwargs,
+        # 任意位置参数。
+        *args,
+        # 任意关键字参数。
+        **kwargs,
 ):
     # 读取描述。
     description = kwargs.get(
@@ -517,7 +516,6 @@ _base.evaluate_loader = (
     # 包装函数。
     _evaluate_loader
 )
-
 
 # 直接执行时进入通用训练主流程。
 if __name__ == "__main__":

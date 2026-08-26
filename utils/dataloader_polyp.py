@@ -18,7 +18,6 @@ import torch.utils.data as data
 # ToTensorV2 把 Albumentations 输出转换为 PyTorch CHW 张量。
 from albumentations.pytorch import ToTensorV2
 
-
 # 本加载器接受的图像/掩膜扩展名；比较时统一使用小写。
 SUPPORTED_EXTENSIONS = {
     # 常见 JPEG 扩展名。
@@ -103,20 +102,20 @@ def polyp_eval_collate(batch):
 class PolypDataset(data.Dataset):
     # image_root 与 gt_root 通过文件 stem 精确配对，不依赖目录枚举顺序。
     def __init__(
-        # 当前数据集实例。
-        self,
-        # 输入图像目录。
-        image_root,
-        # 掩膜目录。
-        gt_root,
-        # 模型输入正方形边长。
-        trainsize,
-        # 是否启用训练随机增强。
-        augmentation=False,
-        # train、val 或 test。
-        split="train",
-        # True 读取 RGB，False 读取单通道灰度。
-        color_image=True,
+            # 当前数据集实例。
+            self,
+            # 输入图像目录。
+            image_root,
+            # 掩膜目录。
+            gt_root,
+            # 模型输入正方形边长。
+            trainsize,
+            # 是否启用训练随机增强。
+            augmentation=False,
+            # train、val 或 test。
+            split="train",
+            # True 读取 RGB，False 读取单通道灰度。
+            color_image=True,
     ):
         # 限定合法划分，避免拼写错误静默进入评测分支。
         if split not in {"train", "val", "test"}:
@@ -179,7 +178,7 @@ class PolypDataset(data.Dataset):
                 "{}\t{}\t{}\n".format(
                     # 插入规范 ID、图像名、掩膜名。
                     key, image_path.name, mask_path.name
-                # 统一编码为 UTF-8 字节后更新 SHA-256。
+                    # 统一编码为 UTF-8 字节后更新 SHA-256。
                 ).encode("utf-8")
             )
         # 保存十六进制清单指纹，供实验记录数据版本。
@@ -339,24 +338,24 @@ class PolypDataset(data.Dataset):
                 # 使用 128 阈值获得 0/1 前景。
                 mask = (
                     # 阈值比较产生布尔数组。
-                    mask >= 128
-                # 转 uint8 便于 Albumentations 和 torch 转换。
+                        mask >= 128
+                    # 转 uint8 便于 Albumentations 和 torch 转换。
                 ).astype(np.uint8)
             # 最大值较小时按 0/1 或小整数标签处理。
             else:
                 # 任何正值都合并为二分类前景。
                 mask = (
                     # 大于 0 的位置为 True。
-                    mask > 0
-                # 转 0/1 uint8。
+                        mask > 0
+                    # 转 0/1 uint8。
                 ).astype(np.uint8)
 
         # 三维且至少三通道时按彩色掩膜处理。
         elif (
-            # 首先要求 HWC 三维布局。
-            mask_raw.ndim == 3
-            # 并至少包含 BGR 三个颜色通道。
-            and mask_raw.shape[2] >= 3
+                # 首先要求 HWC 三维布局。
+                mask_raw.ndim == 3
+                # 并至少包含 BGR 三个颜色通道。
+                and mask_raw.shape[2] >= 3
         ):
             # BKAI uses red and green foreground labels.
             # Merge all foreground colors into one binary mask.
@@ -371,8 +370,8 @@ class PolypDataset(data.Dataset):
             # 强度不小于 128 的任何颜色标记视为前景。
             mask = (
                 # 阈值产生布尔图。
-                mask_signal >= 128
-            # 转 uint8 0/1。
+                    mask_signal >= 128
+                # 转 uint8 0/1。
             ).astype(np.uint8)
 
             # 彩色标注若二值化后完全为空，通常表示颜色规则或数据异常。
@@ -414,7 +413,6 @@ class PolypDataset(data.Dataset):
                     mask.shape[:2],
                 )
             )
-
 
         # 训练分支对图像和 mask 同步执行完整 Compose。
         if self.split == "train":
@@ -471,28 +469,28 @@ class PolypDataset(data.Dataset):
 
 # 构造带确定性随机种子的通用息肉 DataLoader。
 def get_loader(
-    # 输入图像目录。
-    image_root,
-    # 掩膜目录。
-    gt_root,
-    # 每批样本数。
-    batchsize,
-    # 模型输入尺寸。
-    trainsize,
-    # 是否打乱样本。
-    shuffle=False,
-    # 数据加载子进程数。
-    num_workers=4,
-    # 是否启用锁页内存。
-    pin_memory=True,
-    # 训练随机增强开关。
-    augmentation=False,
-    # train/val/test。
-    split="train",
-    # RGB 或灰度输入。
-    color_image=True,
-    # 主随机种子。
-    seed=2222,
+        # 输入图像目录。
+        image_root,
+        # 掩膜目录。
+        gt_root,
+        # 每批样本数。
+        batchsize,
+        # 模型输入尺寸。
+        trainsize,
+        # 是否打乱样本。
+        shuffle=False,
+        # 数据加载子进程数。
+        num_workers=4,
+        # 是否启用锁页内存。
+        pin_memory=True,
+        # 训练随机增强开关。
+        augmentation=False,
+        # train/val/test。
+        split="train",
+        # RGB 或灰度输入。
+        color_image=True,
+        # 主随机种子。
+        seed=2222,
 ):
     # 创建经过严格 stem 配对的数据集。
     dataset = PolypDataset(

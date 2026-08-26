@@ -10,7 +10,6 @@ from collections import defaultdict
 # NumPy 负责读取 NPZ、检查数组维数/形状并枚举标签类别值。
 import numpy as np
 
-
 # ACDC 验证切片命名规则：case 编号 + slice + ED/ES 心动相位 + 层号，可带 .npz 后缀。
 VALID_PATTERN = re.compile(
     # 三个捕获组依次是病例编号、舒张末期/收缩末期标记、切片编号。

@@ -19,7 +19,6 @@ from medpy import metric
 # 复用项目统一的编码器 + EMCAD 解码器封装。
 from lib.networks import EMCADNet
 
-
 # ACDC 的网络输出共四类：背景、右心室、心肌、左心室。
 ACDC_NUM_CLASSES = 4
 # 三个前景类别的显示名称，顺序对应类别索引 1、2、3。
@@ -96,7 +95,7 @@ class DiceLoss(nn.Module):
         target_one_hot = F.one_hot(
             # 标签转 long，并显式声明输出类别数以保留缺失类别通道。
             target.long(), num_classes=self.num_classes
-        # 把类别维移到通道位置，得到 [B,C,H,W]，再转浮点。
+            # 把类别维移到通道位置，得到 [B,C,H,W]，再转浮点。
         ).permute(0, 3, 1, 2).float()
         # 对 batch、高、宽求和，保留每个类别各自 Dice。
         dims = (0, 2, 3)
@@ -345,12 +344,12 @@ def save_nifti_triplet(image, prediction, target, output_dir, case_name, z_spaci
     os.makedirs(output_dir, exist_ok=True)
     # 依次处理原图、预测和真值，统一写盘逻辑。
     for suffix, array in (
-        # 原始图像后缀 img。
-        ("img", image),
-        # 模型预测后缀 pred。
-        ("pred", prediction),
-        # 人工真值后缀 gt。
-        ("gt", target),
+            # 原始图像后缀 img。
+            ("img", image),
+            # 模型预测后缀 pred。
+            ("pred", prediction),
+            # 人工真值后缀 gt。
+            ("gt", target),
     ):
         # 转 float32 NumPy 后从 [D,H,W] 构造 SimpleITK 图像。
         itk_image = sitk.GetImageFromArray(np.asarray(array, dtype=np.float32))

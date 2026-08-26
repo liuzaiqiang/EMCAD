@@ -18,11 +18,9 @@ from scipy.ndimage.interpolation import zoom
 from torch.utils.data import Dataset
 
 """
-该函数接收一张图像（image）和对应的标签（label），对它们同步进行随机的旋转和翻转操作，最后返回处理后的图像和标签。
-此代码假设标签也是类似图像的数组形式（如掩膜 Mask）。如果标签是边界框坐标或分类标签，则需要完全不同的处理方式。
+    该函数接收一张图像（image）和对应的标签（label），对它们同步进行随机的旋转和翻转操作，最后返回处理后的图像和标签。
+    此代码假设标签也是类似图像的数组形式（如掩膜 Mask）。如果标签是边界框坐标或分类标签，则需要完全不同的处理方式。
 """
-
-
 # 同步执行 90 度倍数旋转与镜像，保证 CT 和标签仍逐像素对齐。
 def random_rot_flip(image, label):
     # 从 0、1、2、3 中随机选 k，对应旋转 0、90、180、270 度。
@@ -106,8 +104,8 @@ class RandomGenerator(object):
 class Synapse_dataset(Dataset):
     # base_dir 是实际数据目录，list_dir 保存划分列表，split 决定读取格式。
     def __init__(self, base_dir, list_dir, split, nclass=9, transform=None):
-        # 保存可选的训练变换；测试体通常不传入随机变换。
-        self.transform = transform  # using transform in torch!
+        # 保存可选的训练变换；测试体通常不传入随机变换。 # using transform in torch!
+        self.transform = transform
         # 保存 train、test_vol 等划分名。
         self.split = split
         # 一次性读取对应列表的全部行；每行是一个切片名或病例名。
@@ -137,9 +135,7 @@ class Synapse_dataset(Dataset):
             # print(image.shape)
             # image = np.reshape(image, (512, 512))
             # image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-
             # label = np.reshape(label, (512, 512))
-
 
         # 非 train 分支按完整体数据格式读取，用于验证或测试。
         else:

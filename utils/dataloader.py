@@ -19,6 +19,7 @@ class PolypDataset(data.Dataset):
     """
     dataloader for polyp segmentation tasks
     """
+
     # image_root/gt_root 需以路径分隔符结尾，因为原代码用字符串加法拼文件名。
     def __init__(self, image_root, gt_root, trainsize, augmentations):
         # 保存网络训练输入边长。
@@ -71,7 +72,7 @@ class PolypDataset(data.Dataset):
                 transforms.Resize((self.trainsize, self.trainsize)),
                 # 灰度掩膜转 [1,H,W] 浮点张量。
                 transforms.ToTensor()])
-            
+
         # 不启用随机增强时只做确定性缩放、张量化和图像标准化。
         else:
             # 输出当前关闭增强。
@@ -86,38 +87,37 @@ class PolypDataset(data.Dataset):
                 transforms.Normalize([0.485, 0.456, 0.406],
                                      # RGB 标准差。
                                      [0.229, 0.224, 0.225])])
-            
+
             # 掩膜只缩放并转张量。
             self.gt_transform = transforms.Compose([
                 # 固定掩膜空间尺寸。
                 transforms.Resize((self.trainsize, self.trainsize)),
                 # 转 [1,H,W] 浮点张量。
                 transforms.ToTensor()])
-            
 
     # 读取、同步增强并返回第 index 个图像/掩膜对。
     def __getitem__(self, index):
-        
+
         # RGB 读取输入图像。
         image = self.rgb_loader(self.images[index])
         # 单通道灰度读取二值掩膜。
         gt = self.binary_loader(self.gts[index])
-        
+
         # 为当前样本生成一个足够大的整数种子。
-        seed = np.random.randint(2147483647) # make a seed with numpy generator 
+        seed = np.random.randint(2147483647)  # make a seed with numpy generator
         # 在图像变换前固定 Python 随机状态。
-        random.seed(seed) # apply this seed to img tranfsorms
+        random.seed(seed)  # apply this seed to img tranfsorms
         # 同时固定 PyTorch 随机状态，兼容 torchvision 0.7 的随机实现。
-        torch.manual_seed(seed) # needed for torchvision 0.7
+        torch.manual_seed(seed)  # needed for torchvision 0.7
         # 已配置图像流水线时执行它。
         if self.img_transform is not None:
             # 得到标准化输入张量。
             image = self.img_transform(image)
-            
+
         # 在掩膜变换前恢复完全相同的 Python 随机状态。
-        random.seed(seed) # apply this seed to img tranfsorms
+        random.seed(seed)  # apply this seed to img tranfsorms
         # 恢复同一 PyTorch 随机状态，使旋转和翻转参数与图像一致。
-        torch.manual_seed(seed) # needed for torchvision 0.7
+        torch.manual_seed(seed)  # needed for torchvision 0.7
         # 已配置掩膜变换时执行。
         if self.gt_transform is not None:
             # 得到与图像几何对齐的掩膜张量。
@@ -171,28 +171,29 @@ class PolypDataset(data.Dataset):
 
     # 旧的极坐标变换实验入口；polar_transformations 未在本文件导入，主训练路径不调用该方法。
     def convert2polar(self, img, gt):
-    
-	    # 根据掩膜计算极坐标中心。
-    	center = polar_transformations.centroid(gt)
-	    # 把输入图像转换到该中心定义的极坐标。
-    	img = polar_transformations.to_polar(img, center)
-	    # 标签使用完全相同中心转换。
-    	gt = polar_transformations.to_polar(gt, center)
-    	
-	    # 返回转换后的图像和掩膜。
-    	return img, gt
-            #center_max_shift = 0.05 * LesionDataset.height
-            #center = np.array(center)
-            #center = (
-               #center[0] + np.random.uniform(-center_max_shift, center_max_shift),
-               #center[1] + np.random.uniform(-center_max_shift, center_max_shift))
-    ## to PyTorch expected format
-    #input = input.transpose(2, 0, 1)
-    #label = np.expand_dims(label, axis=-1)
-    #label = label.transpose(2, 0, 1)
 
-    #input_tensor = torch.from_numpy(input)
-    
+        # 根据掩膜计算极坐标中心。
+        center = polar_transformations.centroid(gt)
+        # 把输入图像转换到该中心定义的极坐标。
+        img = polar_transformations.to_polar(img, center)
+        # 标签使用完全相同中心转换。
+        gt = polar_transformations.to_polar(gt, center)
+
+        # 返回转换后的图像和掩膜。
+        return img, gt
+        # center_max_shift = 0.05 * LesionDataset.height
+        # center = np.array(center)
+        # center = (
+        # center[0] + np.random.uniform(-center_max_shift, center_max_shift),
+        # center[1] + np.random.uniform(-center_max_shift, center_max_shift))
+
+    ## to PyTorch expected format
+    # input = input.transpose(2, 0, 1)
+    # label = np.expand_dims(label, axis=-1)
+    # label = label.transpose(2, 0, 1)
+
+    # input_tensor = torch.from_numpy(input)
+
     # 仅在图像任一边短于 trainsize 时等比例下限式放大到至少训练尺寸。
     def resize(self, img, gt):
         # 输入和掩膜必须原始尺寸一致。
@@ -219,7 +220,8 @@ class PolypDataset(data.Dataset):
 
 
 # 构造训练 DataLoader；augmentation 原样传入 PolypDataset。
-def get_loader(image_root, gt_root, batchsize, trainsize, shuffle=False, num_workers=4, pin_memory=True, augmentation=False): #shuffle=True
+def get_loader(image_root, gt_root, batchsize, trainsize, shuffle=False, num_workers=4, pin_memory=True,
+               augmentation=False):  # shuffle=True
 
     # 实例化数据集并完成文件过滤和变换配置。
     dataset = PolypDataset(image_root, gt_root, trainsize, augmentation)
@@ -246,7 +248,8 @@ class test_dataset:
         # 收集 JPG/PNG 输入图像并拼接完整路径。
         self.images = [image_root + f for f in os.listdir(image_root) if f.endswith('.jpg') or f.endswith('.png')]
         # 收集 TIFF/PNG 掩膜；原表达式中的 '.png' or ... 实际先求值为 '.png'，保持原逻辑。
-        self.gts = [gt_root + f for f in os.listdir(gt_root) if f.endswith('.tif') or f.endswith('.png' or f.endswith('.jpg'))]
+        self.gts = [gt_root + f for f in os.listdir(gt_root) if
+                    f.endswith('.tif') or f.endswith('.png' or f.endswith('.jpg'))]
         # 图像按路径排序。
         self.images = sorted(self.images)
         # 掩膜按路径排序，依赖同名顺序配对。

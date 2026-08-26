@@ -18,7 +18,6 @@ import torch.utils.data as data
 # ToTensorV2 把增强后的 HWC/二维数组转为 PyTorch 张量。
 from albumentations.pytorch import ToTensorV2
 
-
 # ISIC 原始输入图像允许 JPG/JPEG。
 IMAGE_EXTENSIONS = {".jpg", ".jpeg"}
 # ISIC 分割真值使用 PNG。
@@ -36,10 +35,10 @@ def _canonical_id(path, is_mask):
 
     # 掩膜才需要去除 _segmentation 后缀。
     if (
-        # 当前目录索引的是 mask。
-        is_mask
-        # 不区分大小写检查官方后缀。
-        and stem.casefold().endswith(MASK_SUFFIX)
+            # 当前目录索引的是 mask。
+            is_mask
+            # 不区分大小写检查官方后缀。
+            and stem.casefold().endswith(MASK_SUFFIX)
     ):
         # 从原 stem 末尾切除后缀长度，保留图像 ID。
         stem = stem[:-len(MASK_SUFFIX)]
@@ -78,10 +77,10 @@ def _index_directory(root, is_mask):
     for path in sorted(root.iterdir()):
         # 跳过子目录和不支持扩展名。
         if (
-            # 必须是普通文件。
-            not path.is_file()
-            # 或扩展名不在当前白名单时跳过。
-            or path.suffix.lower() not in extensions
+                # 必须是普通文件。
+                not path.is_file()
+                # 或扩展名不在当前白名单时跳过。
+                or path.suffix.lower() not in extensions
         ):
             # 继续下一个目录项。
             continue
@@ -142,7 +141,7 @@ def _seed_worker(worker_id):
     # PyTorch 根据主 Generator/worker_id 生成 64 位种子，再映射到 32 位。
     worker_seed = (
         # initial_seed 在每个 worker 中不同。
-        torch.initial_seed() % (2 ** 32)
+            torch.initial_seed() % (2 ** 32)
     )
     # 固定 Python random。
     random.seed(worker_seed)
@@ -188,20 +187,20 @@ def isic_eval_collate(batch):
 class ISICDataset(data.Dataset):
     # 构造函数参数逐行展开，便于命令行加载器传递。
     def __init__(
-        # 当前实例。
-        self,
-        # JPG/JPEG 图像目录。
-        image_root,
-        # *_segmentation.png 掩膜目录。
-        gt_root,
-        # 模型输入边长。
-        trainsize,
-        # 训练几何增强开关。
-        augmentation=False,
-        # train/val/test。
-        split="train",
-        # ISIC 只支持 True；保留参数与通用加载器接口一致。
-        color_image=True,
+            # 当前实例。
+            self,
+            # JPG/JPEG 图像目录。
+            image_root,
+            # *_segmentation.png 掩膜目录。
+            gt_root,
+            # 模型输入边长。
+            trainsize,
+            # 训练几何增强开关。
+            augmentation=False,
+            # train/val/test。
+            split="train",
+            # ISIC 只支持 True；保留参数与通用加载器接口一致。
+            color_image=True,
     ):
         # 限定合法划分。
         if split not in {"train", "val", "test"}:
@@ -306,12 +305,12 @@ class ISICDataset(data.Dataset):
 
         # 清单包含 ID、文件名和字节大小，可检测文件替换/截断。
         for (
-            # 规范 ID。
-            sample_id,
-            # 图像路径。
-            image_path,
-            # 掩膜路径。
-            mask_path,
+                # 规范 ID。
+                sample_id,
+                # 图像路径。
+                image_path,
+                # 掩膜路径。
+                mask_path,
         ) in self.samples:
             # 把当前记录编码后更新哈希。
             digest.update(
@@ -330,7 +329,7 @@ class ISICDataset(data.Dataset):
                     mask_path.name,
                     # 掩膜字节数。
                     mask_path.stat().st_size,
-                # 转 UTF-8 字节。
+                    # 转 UTF-8 字节。
                 ).encode("utf-8")
             )
 
@@ -342,10 +341,10 @@ class ISICDataset(data.Dataset):
 
         # 只有训练且启用 augmentation 时添加随机几何变换。
         if (
-            # 当前划分为训练。
-            self.split == "train"
-            # 且增强开关为真。
-            and self.augmentation
+                # 当前划分为训练。
+                self.split == "train"
+                # 且增强开关为真。
+                and self.augmentation
         ):
             # 追加三类同步几何增强。
             transforms.extend(
@@ -567,28 +566,28 @@ class ISICDataset(data.Dataset):
 
 # 构造具有确定性 worker 种子的 ISIC DataLoader。
 def get_loader(
-    # 图像目录。
-    image_root,
-    # 掩膜目录。
-    gt_root,
-    # 批大小。
-    batchsize,
-    # 模型输入尺寸。
-    trainsize,
-    # 是否打乱。
-    shuffle=False,
-    # worker 数量。
-    num_workers=4,
-    # 锁页内存开关。
-    pin_memory=True,
-    # 训练增强开关。
-    augmentation=False,
-    # train/val/test。
-    split="train",
-    # 必须为 True。
-    color_image=True,
-    # DataLoader 主随机种子。
-    seed=2222,
+        # 图像目录。
+        image_root,
+        # 掩膜目录。
+        gt_root,
+        # 批大小。
+        batchsize,
+        # 模型输入尺寸。
+        trainsize,
+        # 是否打乱。
+        shuffle=False,
+        # worker 数量。
+        num_workers=4,
+        # 锁页内存开关。
+        pin_memory=True,
+        # 训练增强开关。
+        augmentation=False,
+        # train/val/test。
+        split="train",
+        # 必须为 True。
+        color_image=True,
+        # DataLoader 主随机种子。
+        seed=2222,
 ):
     # 创建严格图像/掩膜 ID 配对的数据集。
     dataset = ISICDataset(
@@ -639,6 +638,6 @@ def get_loader(
         # worker>0 时跨 epoch 保持子进程，减少重复启动开销。
         persistent_workers=(
             # 0 worker 时必须为 False。
-            int(num_workers) > 0
+                int(num_workers) > 0
         ),
     )

@@ -13,7 +13,6 @@ from utils.dataloader_polyp import (
     get_loader as _get_polyp_loader,
 )
 
-
 # 准备后的 BUSI 图像和掩膜只允许无损 PNG。
 SUPPORTED_EXTENSIONS = {".png"}
 # 本项目排除 normal 类，仅训练良性/恶性病灶分割。
@@ -68,13 +67,13 @@ def _sha256_file(path):
     with Path(path).open("rb") as stream:
         # iter(callable, sentinel) 不断读取块，遇到空字节串停止。
         for block in iter(
-            # 每次调用 lambda 从流读取下一块。
-            lambda: stream.read(
-                # 块大小 1 MiB。
-                1024 * 1024
-            ),
-            # EOF 哨兵。
-            b"",
+                # 每次调用 lambda 从流读取下一块。
+                lambda: stream.read(
+                    # 块大小 1 MiB。
+                    1024 * 1024
+                ),
+                # EOF 哨兵。
+                b"",
         ):
             # 把当前块追加到哈希状态。
             digest.update(block)
@@ -116,9 +115,9 @@ def _read_manifest(dataset_root):
     # manifest 固定放在 dataset_root 根目录。
     path = (
         # 转 Path。
-        Path(dataset_root)
-        # 拼文件名。
-        / "manifest.csv"
+            Path(dataset_root)
+            # 拼文件名。
+            / "manifest.csv"
     )
 
     # 清单必须存在且为普通文件。
@@ -136,12 +135,12 @@ def _read_manifest(dataset_root):
 
     # newline="" 让 csv 模块自行处理换行；显式使用 UTF-8。
     with path.open(
-        # 只读文本模式。
-        "r",
-        # 禁止通用换行预处理干扰 CSV。
-        newline="",
-        # 文件编码。
-        encoding="utf-8",
+            # 只读文本模式。
+            "r",
+            # 禁止通用换行预处理干扰 CSV。
+            newline="",
+            # 文件编码。
+            encoding="utf-8",
     ) as stream:
         # 第一行作为字段名解析每行字典。
         reader = csv.DictReader(stream)
@@ -158,13 +157,13 @@ def _read_manifest(dataset_root):
 
         # 字段名缺失或不包含全部必需列时拒绝读取。
         if (
-            # 空文件可能使 fieldnames 为 None。
-            reader.fieldnames is None
-            # 或必需列不是实际列集合的子集。
-            or not required.issubset(
-                # CSV 实际表头。
-                reader.fieldnames
-            )
+                # 空文件可能使 fieldnames 为 None。
+                reader.fieldnames is None
+                # 或必需列不是实际列集合的子集。
+                or not required.issubset(
+            # CSV 实际表头。
+            reader.fieldnames
+        )
         ):
             # 报告排序后的必需列名。
             raise RuntimeError(
@@ -213,14 +212,14 @@ def _read_manifest(dataset_root):
 
             # 类别和划分都必须属于允许集合。
             if (
-                # 检查类别。
-                class_name
-                # 类别不合法。
-                not in VALID_CLASSES
-                # 或检查划分。
-                or split
-                # 划分不合法。
-                not in VALID_SPLITS
+                    # 检查类别。
+                    class_name
+                    # 类别不合法。
+                    not in VALID_CLASSES
+                    # 或检查划分。
+                    or split
+                    # 划分不合法。
+                    not in VALID_SPLITS
             ):
                 # 报告完整原始行。
                 raise RuntimeError(
@@ -232,10 +231,10 @@ def _read_manifest(dataset_root):
 
             # ID 前缀携带的类别必须与 class_name 列一致。
             if (
-                # 从 ID 解析类别。
-                _class_from_id(sample_id)
-                # 与清单列比较。
-                != class_name
+                    # 从 ID 解析类别。
+                    _class_from_id(sample_id)
+                    # 与清单列比较。
+                    != class_name
             ):
                 # 报告矛盾行。
                 raise RuntimeError(
@@ -274,28 +273,28 @@ def _read_manifest(dataset_root):
 
 # 构造 BUSI DataLoader，并在通用加载器基础上执行清单和类别分布校验。
 def get_loader(
-    # 当前 split 的 images 目录。
-    image_root,
-    # 当前 split 的 masks 目录。
-    gt_root,
-    # 批大小。
-    batchsize,
-    # 模型输入尺寸。
-    trainsize,
-    # 是否打乱。
-    shuffle=False,
-    # worker 数量。
-    num_workers=4,
-    # 锁页内存。
-    pin_memory=True,
-    # 训练增强开关。
-    augmentation=False,
-    # train/val/test。
-    split="train",
-    # BUSI 必须为 RGB True。
-    color_image=True,
-    # DataLoader 随机种子。
-    seed=2222,
+        # 当前 split 的 images 目录。
+        image_root,
+        # 当前 split 的 masks 目录。
+        gt_root,
+        # 批大小。
+        batchsize,
+        # 模型输入尺寸。
+        trainsize,
+        # 是否打乱。
+        shuffle=False,
+        # worker 数量。
+        num_workers=4,
+        # 锁页内存。
+        pin_memory=True,
+        # 训练增强开关。
+        augmentation=False,
+        # train/val/test。
+        split="train",
+        # BUSI 必须为 RGB True。
+        color_image=True,
+        # DataLoader 随机种子。
+        seed=2222,
 ):
     # 限定合法划分。
     if split not in VALID_SPLITS:
@@ -367,8 +366,8 @@ def get_loader(
         )
         # 扩展名必须严格为 .png，比较时忽略大小写。
         if path.suffix.lower()
-        # 与要求值比较。
-        != ".png"
+           # 与要求值比较。
+           != ".png"
     ]
 
     # 发现非法格式就终止。
@@ -466,13 +465,13 @@ def get_loader(
 
     # 类别数必须等于固定划分方案的预期值。
     if (
-        # 实际计数。
-        class_counts
-        # 与当前 split 预期字典比较。
-        != EXPECTED_SPLIT_CLASS_COUNTS[
-            # 当前 split 键。
-            split
-        ]
+            # 实际计数。
+            class_counts
+            # 与当前 split 预期字典比较。
+            != EXPECTED_SPLIT_CLASS_COUNTS[
+        # 当前 split 键。
+        split
+    ]
     ):
         # 报告预期与实际。
         raise RuntimeError(
