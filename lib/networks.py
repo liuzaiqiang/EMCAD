@@ -136,8 +136,8 @@ class EMCADNet(nn.Module):
             self.backbone.load_state_dict(model_dict)
 
         # 打印编码器参数总数；ResNet 的未使用分类头参数也包含在该统计中。    # m.numel() 对所有编码器 Parameter 的元素数求和。
-        print('Model %s created, param count: %d' % (encoder + ' backbone: ',
-                                                     sum([m.numel() for m in self.backbone.parameters()])))
+        print('Model %s created, param count: %d' % (
+            encoder + ' backbone: ', sum([m.numel() for m in self.backbone.parameters()])))
 
         # decoder initialization。用所选骨干的四级逆序通道构造 EMCAD，并透传所有消融参数。
         # 论文默认配置是 kernel_sizes=[1,3,5]、expansion_factor=2、并行深度卷积、加法聚合和 ReLU6。
@@ -159,8 +159,6 @@ class EMCADNet(nn.Module):
 
     # 输入 x 约定为 (B,C,H,W)；mode 当前不改变返回值，训练策略由外部 trainer 决定。
     def forward(self, x, mode='test'):
-
-        # if grayscale input, convert to 3 channels
         # 只在 C=1 时使用可学习适配器；已经是 RGB/C=3 时直接送入编码器。
         if x.size()[1] == 1:
             # (B,1,H,W) -> (B,3,H,W)，空间尺寸保持不变。
@@ -207,7 +205,7 @@ class EMCADNet(nn.Module):
 
 # 直接运行本文件时执行一个 GPU 形状检查；被训练脚本 import 时不会进入该分支。
 if __name__ == '__main__':
-    # 使用默认 PVTv2-B2、1 类输出并移动到 CUDA。
+    # 使用默认 PVTv2-B2、1类输出并移动到 CUDA。
     model = EMCADNet().cuda()
     # 构造 352x352 的 3 通道随机输入；因为 C=3，不经过 1->3 适配器。
     input_tensor = torch.randn(1, 3, 352, 352).cuda()
