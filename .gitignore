@@ -15,7 +15,7 @@ data/**
 *.vti
 *.stl
 
-
+docs/
 
 model_pth/
 pretrained_pth/
