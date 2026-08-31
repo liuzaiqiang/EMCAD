@@ -166,6 +166,8 @@ def trainer_synapse(args, model, snapshot_path):
 
     # 外层循环遍历 epoch_num=0..max_epoch-1。
     for epoch_num in iterator:
+        # 每个 epoch 开始前确保模型处于训练模式  2026-08-31 16:45新增
+        model.train()
         # 内层循环逐批读取字典；i_batch 是当前 epoch 内的 batch 序号。
         for i_batch, sampled_batch in enumerate(trainloader):
             # DataLoader 堆叠后，image_batch 通常 [B,1,224,224]，label_batch 通常 [B,224,224]。
@@ -175,6 +177,7 @@ def trainer_synapse(args, model, snapshot_path):
             image_batch, label_batch = image_batch.cuda(), label_batch.squeeze(1).cuda()
             # 训练模式前向：EMCADNet 返回由粗到细的四个全分辨率 logits，均为 [B,9,224,224]。
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名 P 表示 prediction list。
+            # 注意，mode='train' 只是你这个 EMCAD forward() 的参数，不能替代 PyTorch 的 model.train()。真正决定 BatchNorm、Dropout 是否处于训练状态的是模型的 training 属性。
             P = model(image_batch, mode='train')
             # 兼容只返回单张量的其他模型：统一包装为列表，后续监督代码只处理 list。
             if not isinstance(P, list):

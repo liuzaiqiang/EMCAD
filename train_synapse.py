@@ -198,16 +198,16 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_s' + str(args.seed) if args.seed != 1234 else snapshot_path
 
     # 首次运行该配置时创建目录；已存在时复用，其中旧文件可能被本训练流程覆盖。
-    if not os.path.exists(snapshot_path):
+    # if not os.path.exists(snapshot_path):
         # 递归建立外层和内层目录。
-        os.makedirs(snapshot_path)
+    # os.makedirs(snapshot_path)
 
     # === 简化后的 snapshot_path（Windows / Linux 通用）===
-    # exp_name = f"run_seed{args.seed}"
-    # snapshot_path = os.path.join("model_pth", exp_name)
-    #
-    # if not os.path.exists(snapshot_path):
-    #     os.makedirs(snapshot_path)
+    exp_name = f"run_seed{args.seed}"
+    snapshot_path = os.path.join("model_pth", exp_name)
+
+    if not os.path.exists(snapshot_path):
+        os.makedirs(snapshot_path)
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。
