@@ -29,7 +29,7 @@ export PYTHONUNBUFFERED=1
 
 
 # 测试输入尺寸、数据集名、体数据目录和病例列表目录。
-IMG_SIZE=256
+IMG_SIZE=224
 DATASET="Synapse"
 VOLUME_PATH="../data/Synapse/test_vol_h5"
 LIST_PATH="../data/Synapse/lists/lists_Synapse"
@@ -66,6 +66,7 @@ nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
   --list_dir "${LIST_PATH}" \
+   --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。

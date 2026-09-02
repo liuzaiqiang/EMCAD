@@ -273,6 +273,8 @@ if __name__ == "__main__":
         args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
         args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
         run) + '_' + dataset_name + str(args.img_size)
+
+    """
     # 重建内层 checkpoint 目录。
     snapshot_path = "model_pth/{}/{}".format(args.exp, args.encoder + '_EMCAD_kernel_sizes_' + str(
         args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
@@ -296,6 +298,10 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_' + str(args.img_size)
     # 当前默认 seed=2222，因此追加 _s2222。
     snapshot_path = snapshot_path + '_s' + str(args.seed) if args.seed != 1234 else snapshot_path
+    """
+
+    snapshot_path = os.path.join("model_pth", f"run_seed{args.seed}")
+
 
     # 按与 checkpoint 一致的结构构造空模型；num_classes=9 决定四个分割头通道数。
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
@@ -310,7 +316,7 @@ if __name__ == "__main__":
     # 首选加载训练过程中按验证 Dice 选择的 best.pth。
     snapshot = os.path.join(snapshot_path, 'best.pth')
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
-    print(">>>>>>snapshot值(也是best.pth要放的位置)：", snapshot)
+    print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)
     # 若 best.pth 不存在，则回退到零基编号的最后 epoch 文件，例如 epoch_299.pth。
     if not os.path.exists(snapshot): snapshot = snapshot.replace('best', 'epoch_' + str(args.max_epochs - 1))
     # torch.load 读取 state_dict，load_state_dict 默认 strict=True；没有 map_location，要求当前 CUDA 环境兼容。
