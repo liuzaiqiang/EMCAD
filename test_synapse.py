@@ -121,7 +121,10 @@ if (args.num_classes == 14):
 # 默认 Synapse 配置是 9 类，因此进入此分支。
 else:
     # 8 个名称依次对应标签 1..8；标签 0 背景不单独报告。
-    classes = ['spleen', 'right kidney', 'left kidney', 'gallbladder', 'pancreas', 'liver', 'stomach', 'aorta']
+    # classes = ['spleen', 'right kidney', 'left kidney', 'gallbladder', 'pancreas', 'liver', 'stomach', 'aorta']
+    # 上面原始代码，liver和pancreas的位置反了。2026-09-03 20:37:00更新
+    classes = ['spleen', 'right kidney', 'left kidney',
+               'gallbladder', 'liver', 'pancreas',  'stomach', 'aorta']
 
 
 # 整个测试集推理函数；test_save_path 控制 NIfTI/PNG 输出位置。
