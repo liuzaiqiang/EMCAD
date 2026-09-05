@@ -212,6 +212,8 @@ class DisagreementGuidedEMCAD(nn.Module):
         num_classes: int,
         kernel_sizes: Sequence[int] = (1, 3, 5),
         expansion_factor: int = 2,
+        dw_parallel: bool = True,
+        add: bool = True,
         lgag_ks: int = 3,
         activation: str = "relu6",
         router_mode: str = "disagreement",
@@ -222,6 +224,16 @@ class DisagreementGuidedEMCAD(nn.Module):
         super().__init__()
         if len(channels) != 4:
             raise ValueError("channels must contain [C4,C3,C2,C1]")
+        if not dw_parallel:
+            raise ValueError(
+                "DisagreementGuidedEMCAD requires dw_parallel=True because "
+                "its router mixes independent MSDC branches."
+            )
+        if not add:
+            raise ValueError(
+                "DisagreementGuidedEMCAD requires add=True because its router "
+                "replaces additive MSDC aggregation rather than concatenation."
+            )
         c4, c3, c2, c1 = channels
 
         common = dict(
@@ -293,15 +305,44 @@ class DGEMCADNet(EMCADNet):
 
     def __init__(
         self,
-        *args,
+        num_classes: int = 1,
+        kernel_sizes: Sequence[int] = (1, 3, 5),
+        expansion_factor: int = 2,
+        dw_parallel: bool = True,
+        add: bool = True,
+        lgag_ks: int = 3,
+        activation: str = "relu",
+        encoder: str = "pvt_v2_b2",
+        pretrain: bool = True,
+        pretrained_dir: str = "./pretrained_pth/pvt/",
         router_mode: str = "disagreement",
         disagreement_lambda: float = 1.0,
         router_temperature: float = 1.0,
         router_hidden: int = 32,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        num_classes = self.out_head1.out_channels
+        if not dw_parallel:
+            raise ValueError(
+                "DGEMCADNet supports only dw_parallel=True; the adaptive router "
+                "requires independent multi-scale branch responses."
+            )
+        if not add:
+            raise ValueError(
+                "DGEMCADNet supports only add=True; routing replaces the original "
+                "additive MSDC aggregation and cannot preserve concat semantics."
+            )
+
+        super().__init__(
+            num_classes=num_classes,
+            kernel_sizes=kernel_sizes,
+            expansion_factor=expansion_factor,
+            dw_parallel=dw_parallel,
+            add=add,
+            lgag_ks=lgag_ks,
+            activation=activation,
+            encoder=encoder,
+            pretrain=pretrain,
+            pretrained_dir=pretrained_dir,
+        )
         channels = [
             self.out_head4.in_channels,
             self.out_head3.in_channels,
@@ -311,10 +352,12 @@ class DGEMCADNet(EMCADNet):
         self.decoder = DisagreementGuidedEMCAD(
             channels=channels,
             num_classes=num_classes,
-            kernel_sizes=kwargs.get("kernel_sizes", (1, 3, 5)),
-            expansion_factor=kwargs.get("expansion_factor", 2),
-            lgag_ks=kwargs.get("lgag_ks", 3),
-            activation=kwargs.get("activation", "relu6"),
+            kernel_sizes=kernel_sizes,
+            expansion_factor=expansion_factor,
+            dw_parallel=dw_parallel,
+            add=add,
+            lgag_ks=lgag_ks,
+            activation=activation,
             router_mode=router_mode,
             disagreement_lambda=disagreement_lambda,
             router_temperature=router_temperature,

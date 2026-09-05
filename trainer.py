@@ -46,7 +46,15 @@ from torch.cuda.amp import GradScaler, autocast
 from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset 生成监督组合；DiceLoss 计算多类软 Dice；两个 volume 函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
-
+# DG-EMCAD 专用辅助函数、EMA teacher 和边界蒸馏损失。
+from utils.dg_losses import (
+    BoundaryPartitionDistillationLoss,
+    ModelEMA,
+    linear_ramp,
+    routing_prediction_loss,
+    routing_regularization,
+    unpack_output,
+)
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
 # 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
@@ -145,6 +153,23 @@ def trainer_synapse(args, model, snapshot_path):
     # DiceLoss 会 softmax 后把整数标签 one-hot，逐类计算并平均 9 个类别的 Dice loss。
     dice_loss = DiceLoss(num_classes)
 
+    # 只有启用 --bp_distill 时才创建 EMA teacher。
+    # teacher 不参与梯度计算，只通过 student 参数的指数滑动平均更新。
+    ema_teacher = None
+    distill_criterion = None
+
+    if args.bp_distill:
+        ema_teacher = ModelEMA(model, decay=args.dg_ema_decay)
+        distill_criterion = BoundaryPartitionDistillationLoss(
+            temperature=args.dg_temperature,
+            confidence_threshold=args.dg_confidence,
+            boundary_radius=args.dg_boundary_radius,
+        )
+
+
+
+
+
     # 这是保留的 SGD 备选方案，前导 # 使其不执行。
     # optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     # 当前实际优化器是 AdamW；weight decay=1e-4 与论文第 4.1 节设置一致。
@@ -175,6 +200,8 @@ def trainer_synapse(args, model, snapshot_path):
             # 将图像和标签移到默认 GPU；squeeze(1) 只在标签含冗余通道维 [B,1,H,W] 时移除它。
             # CrossEntropyLoss 最终要求标签形状 [B,H,W]，每个值是 0..8 的类别索引。
             image_batch, label_batch = image_batch.cuda(), label_batch.squeeze(1).cuda()
+
+            """
             # 训练模式前向：EMCADNet 返回由粗到细的四个全分辨率 logits，均为 [B,9,224,224]。
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名 P 表示 prediction list。
             # 注意，mode='train' 只是你这个 EMCAD forward() 的参数，不能替代 PyTorch 的 model.train()。真正决定 BatchNorm、Dropout 是否处于训练状态的是模型的 training 属性。
@@ -234,6 +261,148 @@ def trainer_synapse(args, model, snapshot_path):
             loss.backward()
             # AdamW 根据当前梯度、学习率和权重衰减更新一次全部可训练参数。
             optimizer.step()
+            """
+
+            # 如果启用了 EMA teacher，先生成不带梯度的 teacher 最终输出。
+            teacher_final = None
+
+            if ema_teacher is not None:
+                ema_teacher.module.eval()
+
+                with torch.no_grad():
+                    teacher_result = ema_teacher.module(
+                        image_batch,
+                        mode='test'
+                    )
+                    teacher_outputs, _ = unpack_output(teacher_result)
+                    teacher_final = teacher_outputs[-1].detach()
+
+            # DG 模型训练时需要返回 adaptive_aux。
+            # 原始 EMCADNet 不接受 return_aux 参数，因此必须分支调用。
+            if args.adaptive_msdc:
+                student_result = model(
+                    image_batch,
+                    mode='train',
+                    return_aux=True
+                )
+            else:
+                student_result = model(
+                    image_batch,
+                    mode='train'
+                )
+
+            # 统一转换成四个 logits 列表。
+            # P[0] 到 P[3] 依次对应 decoder 的四个阶段输出，
+            # 每个输出都已经上采样到 [B, num_classes, H, W]。
+            P, adaptive_aux = unpack_output(student_result)
+
+            # 只在第一个 batch 根据实际输出数量建立监督组合。
+            if epoch_num == 0 and i_batch == 0:
+                n_outs = len(P)
+                out_idxs = list(np.arange(n_outs))
+
+                if args.supervision == 'mutation':
+                    ss = [x for x in powerset(out_idxs)]
+                elif args.supervision == 'deep_supervision':
+                    ss = [[x] for x in out_idxs]
+                else:
+                    ss = [[-1]]
+
+                print(ss)
+
+            # 计算原始 EMCAD 多阶段监督损失。
+            # 使用 Tensor 初始化，避免 Python 浮点数与 CUDA Tensor 混合。
+            seg_loss = image_batch.new_zeros(())
+            w_ce, w_dice = 0.3, 0.7
+
+            for s in ss:
+                if not s:
+                    continue
+
+                # 所有阶段输出形状一致，可以直接相加 logits。
+                iout = torch.zeros_like(P[0])
+
+                for idx in s:
+                    iout = iout + P[idx]
+
+                loss_ce = ce_loss(
+                    iout,
+                    label_batch.long()
+                )
+
+                loss_dice = dice_loss(
+                    iout,
+                    label_batch,
+                    softmax=True
+                )
+
+                seg_loss = seg_loss + (
+                    w_ce * loss_ce +
+                    w_dice * loss_dice
+                )
+
+            # DG 路由辅助损失和路由正则项。
+            # baseline 模式下 adaptive_aux=None，两个损失都保持为 CUDA 上的零 Tensor。
+            route_aux_loss = image_batch.new_zeros(())
+            route_reg_loss = image_batch.new_zeros(())
+            route_stats = {}
+
+            if adaptive_aux is not None:
+                route_aux_loss = routing_prediction_loss(
+                    adaptive_aux,
+                    label_batch,
+                    ce_loss=ce_loss,
+                    dice_loss=dice_loss,
+                )
+
+                route_reg_loss, route_stats = routing_regularization(
+                    adaptive_aux
+                )
+
+            # Boundary-Partition Distillation。
+            # 蒸馏只约束前三个粗尺度输出，最终输出仍由普通 CE + Dice 直接监督。
+            distill_loss = image_batch.new_zeros(())
+            distill_stats = {}
+            distill_ramp = 0.0
+
+            if distill_criterion is not None:
+                distill_ramp = linear_ramp(
+                    epoch_num,
+                    args.dg_distill_warmup,
+                    args.dg_distill_ramp,
+                )
+
+                if distill_ramp > 0.0:
+                    distill_loss, distill_stats = distill_criterion(
+                        P,
+                        teacher_final,
+                        label_batch,
+                    )
+
+            # 最终训练目标：
+            # 原始分割监督 + 路由预测监督 + 路由正则 + 边界蒸馏。
+            loss = (
+                seg_loss
+                + args.dg_route_aux_weight * route_aux_loss
+                + args.dg_route_reg_weight * route_reg_loss
+                + args.dg_distill_weight * distill_ramp * distill_loss
+            )
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            # student 更新完成后，再更新 EMA teacher。
+            if ema_teacher is not None:
+                ema_teacher.update(model)
+
+
+
+
+
+
+
+
             # 原作者保留的多项式学习率衰减公式；前导 # 表示当前没有使用。
             # lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9 # we did not use this
             # 当前学习率始终等于 base_lr，即 constant learning rate。
@@ -249,6 +418,66 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             # 将包含所有监督组合之和的总损失写入 info/total_loss。
             writer.add_scalar('info/total_loss', loss, iter_num)
+
+            # 记录 DG 各分项损失，便于判断路由器是否塌缩以及蒸馏是否生效。
+            writer.add_scalar(
+                'loss/segmentation',
+                seg_loss.detach().item(),
+                iter_num
+            )
+
+            writer.add_scalar(
+                'loss/routing_aux',
+                route_aux_loss.detach().item(),
+                iter_num
+            )
+
+            writer.add_scalar(
+                'loss/routing_regularization',
+                route_reg_loss.detach().item(),
+                iter_num
+            )
+
+            writer.add_scalar(
+                'loss/distillation',
+                distill_loss.detach().item(),
+                iter_num
+            )
+
+            writer.add_scalar(
+                'loss/distillation_ramp',
+                distill_ramp,
+                iter_num
+            )
+
+            if 'balance' in route_stats:
+                writer.add_scalar(
+                    'routing/balance',
+                    route_stats['balance'].item(),
+                    iter_num
+                )
+
+            if 'order' in route_stats:
+                writer.add_scalar(
+                    'routing/order',
+                    route_stats['order'].item(),
+                    iter_num
+                )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
             # 每 50 个全局 step 打印一次细粒度训练日志。
             if iter_num % 50 == 0:

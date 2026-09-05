@@ -26,6 +26,11 @@ import torch.backends.cudnn as cudnn
 
 # EMCADNet 封装“编码器 + EMCAD 解码器 + 四个分割头”；结构细节在 lib/networks.py。
 from lib.networks import EMCADNet
+
+# DG-EMCAD 自适应多尺度解码器
+from lib.dg_emcad import DGEMCADNet
+
+
 # trainer_synapse 承担 DataLoader、损失、反向传播、验证和 checkpoint 保存。
 from trainer import trainer_synapse
 
@@ -72,6 +77,132 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
 parser.add_argument('--supervision', type=str, default='mutation',
                     help='loss supervision: mutation, deep_supervision or last_layer')
+
+
+# 是否启用 Disagreement-Guided MSCB。
+# 默认关闭时仍然训练原始 EMCADNet，便于进行 baseline 对比。
+parser.add_argument(
+    '--adaptive_msdc',
+    action='store_true',
+    default=False,
+    help='enable disagreement-guided adaptive multi-scale decoder'
+)
+
+# 是否启用 Boundary-Partition Distillation。
+# 该选项需要 EMA teacher，只影响训练损失，不改变推理输出格式。
+parser.add_argument(
+    '--bp_distill',
+    action='store_true',
+    default=False,
+    help='enable boundary-partition distillation with EMA teacher'
+)
+
+# 路由器消融模式：
+# equal：固定平均权重；
+# global：整张图共享一个权重；
+# feature：只根据当前特征预测；
+# disagreement：根据特征、不确定性和相邻尺度差异预测。
+parser.add_argument(
+    '--dg_router_mode',
+    type=str,
+    choices=['equal', 'global', 'feature', 'disagreement'],
+    default='disagreement',
+    help='routing strategy for DG-MSCB'
+)
+
+# 相邻尺度预测之间的 JS disagreement 权重。
+parser.add_argument(
+    '--dg_disagreement_lambda',
+    type=float,
+    default=1.0,
+    help='weight of entropy/adjacent-scale disagreement in router'
+)
+
+# 路由器 softmax 温度。
+parser.add_argument(
+    '--dg_router_temperature',
+    type=float,
+    default=1.0,
+    help='temperature used by adaptive branch router'
+)
+
+# 路由器隐藏通道数。
+parser.add_argument(
+    '--dg_router_hidden',
+    type=int,
+    default=32,
+    help='hidden channels in adaptive branch router'
+)
+
+# 路由预测辅助损失权重。
+parser.add_argument(
+    '--dg_route_aux_weight',
+    type=float,
+    default=0.20,
+    help='weight of direct routing prediction loss'
+)
+
+# 路由均衡和尺度顺序正则权重。
+parser.add_argument(
+    '--dg_route_reg_weight',
+    type=float,
+    default=0.05,
+    help='weight of routing regularization'
+)
+
+# 边界蒸馏总权重。
+parser.add_argument(
+    '--dg_distill_weight',
+    type=float,
+    default=1.0,
+    help='weight of boundary-partition distillation'
+)
+
+# 蒸馏预热轮数和线性增长轮数。
+parser.add_argument(
+    '--dg_distill_warmup',
+    type=int,
+    default=10,
+    help='number of epochs before distillation starts'
+)
+parser.add_argument(
+    '--dg_distill_ramp',
+    type=int,
+    default=20,
+    help='number of epochs for distillation weight ramp-up'
+)
+
+# EMA teacher 参数。
+parser.add_argument(
+    '--dg_ema_decay',
+    type=float,
+    default=0.999,
+    help='EMA decay for teacher model'
+)
+
+# 边界蒸馏内部参数。
+parser.add_argument(
+    '--dg_temperature',
+    type=float,
+    default=2.0,
+    help='temperature for teacher/student distillation'
+)
+parser.add_argument(
+    '--dg_confidence',
+    type=float,
+    default=0.70,
+    help='teacher confidence threshold in stable regions'
+)
+parser.add_argument(
+    '--dg_boundary_radius',
+    type=int,
+    default=2,
+    help='boundary band radius for boundary distillation'
+)
+
+
+
+
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -203,18 +334,68 @@ if __name__ == "__main__":
     # os.makedirs(snapshot_path)
 
     # === 简化后的 snapshot_path（Windows / Linux 通用）===
-    exp_name = f"run_seed{args.seed}"
-    snapshot_path = os.path.join("model_pth", exp_name)
+    # exp_name = f"run_seed{args.seed}"
+    # snapshot_path = os.path.join("model_pth", exp_name)
+    # 不同模型和损失配置必须使用不同目录，否则 DG 实验会覆盖 baseline。
+    dg_tag = ''
+
+    if args.adaptive_msdc:
+        dg_tag += f'_dgmscb_{args.dg_router_mode}'
+
+    if args.bp_distill:
+        dg_tag += '_bpd'
+
+    exp_name = f'run_seed{args.seed}{dg_tag}'
+    snapshot_path = os.path.join('model_pth', exp_name)
+
+
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。
-    model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
-                     expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
-                     add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+    # model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
+    #                  expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
+    #                  add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
+    #                  encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+
+        # 统一保存模型结构参数，保证 baseline 与 DG 模型使用完全相同的 encoder 配置。
+    common_model_kwargs = dict(
+        num_classes=args.num_classes,
+        kernel_sizes=args.kernel_sizes,
+        expansion_factor=args.expansion_factor,
+        dw_parallel=not args.no_dw_parallel,
+        add=not args.concatenation,
+        lgag_ks=args.lgag_ks,
+        activation=args.activation_mscb,
+        encoder=args.encoder,
+        pretrain=not args.no_pretrain,
+        pretrained_dir=args.pretrained_dir,
+    )
+
+    if args.adaptive_msdc:
+        # DG 路由器需要独立的 1x1、3x3、5x5 分支。
+        # 因此不能关闭 dw_parallel，也不能使用 concat 聚合。
+        if args.no_dw_parallel or args.concatenation:
+            raise ValueError(
+                'DG-EMCAD requires default parallel branches and add aggregation. '
+                'Do not use --no_dw_parallel or --concatenation.'
+            )
+
+        model = DGEMCADNet(
+            **common_model_kwargs,
+            router_mode=args.dg_router_mode,
+            disagreement_lambda=args.dg_disagreement_lambda,
+            router_temperature=args.dg_router_temperature,
+            router_hidden=args.dg_router_hidden,
+        )
+    else:
+        # 未指定 --adaptive_msdc 时，保持原始 EMCADNet。
+        model = EMCADNet(**common_model_kwargs)
+
+
+
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

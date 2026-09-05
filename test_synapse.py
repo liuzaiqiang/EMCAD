@@ -39,6 +39,11 @@ from utils.utils import test_single_volume
 # EMCADNet 必须用与训练 checkpoint 一致的结构参数重新实例化。
 from lib.networks import EMCADNet
 
+# 与训练阶段完全相同的 DG 模型结构。
+from lib.dg_emcad import DGEMCADNet
+
+
+
 # 创建命令行解析器。
 parser = argparse.ArgumentParser()
 
@@ -87,6 +92,57 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 监督策略不参与测试前向，却参与 checkpoint 目录名，因此仍需匹配训练命令。
 parser.add_argument('--supervision', type=str,
                     default='mutation', help='loss supervision: mutation, deep_supervision or last_layer')
+
+
+# 测试时必须与训练 checkpoint 的网络结构一致。
+parser.add_argument(
+    '--adaptive_msdc',
+    action='store_true',
+    default=False,
+    help='load DG-EMCAD architecture'
+)
+
+parser.add_argument(
+    '--dg_router_mode',
+    type=str,
+    choices=['equal', 'global', 'feature', 'disagreement'],
+    default='disagreement',
+    help='routing strategy used during training'
+)
+
+parser.add_argument(
+    '--dg_disagreement_lambda',
+    type=float,
+    default=1.0,
+    help='weight of adjacent-scale disagreement'
+)
+
+parser.add_argument(
+    '--dg_router_temperature',
+    type=float,
+    default=1.0,
+    help='router temperature'
+)
+
+parser.add_argument(
+    '--dg_router_hidden',
+    type=int,
+    default=32,
+    help='router hidden channels'
+)
+
+# 推荐直接给出 checkpoint 文件，避免 Windows 下重新拼接复杂目录名。
+parser.add_argument(
+    '--checkpoint',
+    type=str,
+    default='',
+    help='explicit checkpoint path, for example model_pth/run_seed2222_dgmscb_disagreement_bpd/best.pth'
+)
+
+
+
+
+
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -303,17 +359,51 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_s' + str(args.seed) if args.seed != 1234 else snapshot_path
     """
 
-    snapshot_path = os.path.join("model_pth", f"run_seed{args.seed}")
+
 
 
     # 按与 checkpoint 一致的结构构造空模型；num_classes=9 决定四个分割头通道数。
-    model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
-                     expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
-                     add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+    # model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
+    #                 expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
+    #                 add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
+    #                 encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+
+    common_model_kwargs = dict(
+        num_classes=args.num_classes,
+        kernel_sizes=args.kernel_sizes,
+        expansion_factor=args.expansion_factor,
+        dw_parallel=not args.no_dw_parallel,
+        add=not args.concatenation,
+        lgag_ks=args.lgag_ks,
+        activation=args.activation_mscb,
+        encoder=args.encoder,
+        pretrain=not args.no_pretrain,
+        pretrained_dir=args.pretrained_dir,
+    )
+
+    if args.adaptive_msdc:
+        if args.no_dw_parallel or args.concatenation:
+            raise ValueError(
+                'DG-EMCAD requires parallel branches and add aggregation.'
+            )
+
+        model = DGEMCADNet(
+            **common_model_kwargs,
+            router_mode=args.dg_router_mode,
+            disagreement_lambda=args.dg_disagreement_lambda,
+            router_temperature=args.dg_router_temperature,
+            router_hidden=args.dg_router_hidden,
+        )
+    else:
+        model = EMCADNet(**common_model_kwargs)
+
+
+
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 
+    """
+    snapshot_path = os.path.join("model_pth", f"run_seed{args.seed}")
     # 下方是历史 checkpoint 路径示例，整行已注释，不参与运行。
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
     # 首选加载训练过程中按验证 Dice 选择的 best.pth。
@@ -326,6 +416,54 @@ if __name__ == "__main__":
     model.load_state_dict(torch.load(snapshot))
     # 以正斜杠切分路径得到内层目录名；在纯 Windows 反斜杠路径上此写法需要留意。
     snapshot_name = snapshot_path.split('/')[-1]
+    """
+    # 推荐使用 --checkpoint 明确指定文件。
+    # 这样不会因为训练参数或 Windows 路径分隔符不同而加载错误模型。
+    if args.checkpoint:
+        snapshot = os.path.normpath(args.checkpoint)
+        snapshot_path = os.path.dirname(snapshot)
+    else:
+        # 未提供显式 checkpoint 时，只能根据 seed 和 DG 模式生成默认目录。
+        dg_tag = ''
+
+        if args.adaptive_msdc:
+            dg_tag = f'_dgmscb_{args.dg_router_mode}'
+
+        snapshot_path = os.path.join(
+            'model_pth',
+            f'run_seed{args.seed}{dg_tag}'
+        )
+
+        snapshot = os.path.join(
+            snapshot_path,
+            'best.pth'
+        )
+
+    print('Loading checkpoint:', snapshot)
+
+    if not os.path.exists(snapshot):
+        fallback = os.path.join(
+            snapshot_path,
+            'epoch_' + str(args.max_epochs - 1) + '.pth'
+        )
+
+        if os.path.exists(fallback):
+            snapshot = fallback
+        else:
+            raise FileNotFoundError(
+                f'Checkpoint not found: {snapshot}'
+            )
+
+    model.load_state_dict(
+        torch.load(snapshot)
+    )
+
+    # Windows 使用 os.path.basename，不能使用 Linux 风格 split('/')。
+    snapshot_name = os.path.basename(
+        os.path.normpath(snapshot_path)
+    )
+
+
 
     # 测试日志按实验标识放入 test_log/test_log_<exp>。
     log_folder = 'test_log/test_log_' + args.exp
