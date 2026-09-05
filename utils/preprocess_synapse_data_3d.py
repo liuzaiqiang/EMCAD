@@ -25,19 +25,21 @@ for split in splits:
     # 训练集被转换成中心切片监督的三帧输入 NPZ。
     if (split == 'train'):
         # Synapse 原始训练 CT 的 NIfTI 目录。
-        ct_path = '../data/synapse/Abdomen/RawData/TrainSet/img'  # set your path to your trainset directory
+        # set your path to your trainset directory
+        ct_path = '../data/Synapse/Abdomen/RawData/TrainSet/img'
         # 与训练 CT 对齐的分割标签目录。
-        seg_path = '../data/synapse/Abdomen/RawData/TrainSet/label'
+        seg_path = '../data/Synapse/Abdomen/RawData/TrainSet/label'
         # 三相邻切片训练样本的输出目录；mframes 表示 multiple frames。
-        save_path = '../data/synapse/train_npz_mframes/'
+        save_path = '../data/Synapse/train_npz_mframes/'
     # 测试集不拆片，保存完整体数据供逐切片推理后重组评测。
     else:
         # Synapse 原始测试 CT 目录。
-        ct_path = '../data/synapse/Abdomen/RawData/TestSet/img'  # set your path to your testset directory
+        # set your path to your testset directory
+        ct_path = '../data/Synapse/Abdomen/RawData/TestSet/img'
         # Synapse 原始测试标签目录。
-        seg_path = '../data/synapse/Abdomen/RawData/TestSet/label'
+        seg_path = '../data/Synapse/Abdomen/RawData/TestSet/label'
         # 测试病例 HDF5 文件输出目录。
-        save_path = '../data/synapse/test_vol_h5_mframes/'
+        save_path = '../data/Synapse/test_vol_h5_mframes/'
 
     # 只在输出目录不存在时创建它。
     if os.path.exists(save_path) is False:

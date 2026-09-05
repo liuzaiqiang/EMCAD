@@ -25,11 +25,12 @@ for split in splits:
     # 训练划分使用 Synapse TrainSet，并生成供二维训练加载器读取的 NPZ 文件。
     if (split == 'train'):
         # 原始训练 CT 的 NIfTI 文件目录。
-        ct_path = '../data/synapse/Abdomen/RawData/TrainSet/img'  # set your path to your trainset directory
+        # set your path to your trainset directory
+        ct_path = '../data/Synapse/Abdomen/RawData/TrainSet/img'
         # 与训练 CT 一一对应的器官分割标签目录。
-        seg_path = '../data/synapse/Abdomen/RawData/TrainSet/label'
+        seg_path = '../data/Synapse/Abdomen/RawData/TrainSet/label'
         # 每个轴向切片保存为一个独立 .npz 文件的目标目录。
-        save_path = '../data/synapse/train_npz_new/'
+        save_path = '../data/Synapse/train_npz_new/'
     # 测试划分保留病例的深度维度，以便按体数据统计 Dice、HD95 等指标。
     else:
         # 原始测试 CT 目录；注意这里相对路径与上面的训练路径起点不同，这是原代码约定。

@@ -38,9 +38,9 @@ from trainer import trainer_synapse
 parser = argparse.ArgumentParser()
 
 # 训练数据根目录：每个 Synapse 二维切片通常对应一个 .npz 文件。
-parser.add_argument('--root_path', type=str, default='../data/synapse/train_npz', help='root dir for data')
+parser.add_argument('--root_path', type=str, default='../data/Synapse/train_npz', help='root dir for data')
 # 完整体数据目录：验证/测试按病例读取 .npy.h5，   而不是逐切片 .npz。
-parser.add_argument('--volume_path', type=str, default='../data/synapse/test_vol_h5',
+parser.add_argument('--volume_path', type=str, default='../data/Synapse/test_vol_h5',
                     help='root dir for validation volume data')
 # 数据集键名稍后用于查询 dataset_config 和 trainer 映射表；当前只注册 Synapse。
 parser.add_argument('--dataset', type=str, default='Synapse', help='experiment_name')
@@ -359,6 +359,7 @@ if __name__ == "__main__":
     #                  expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
     #                  add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
     #                  encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+
 
         # 统一保存模型结构参数，保证 baseline 与 DG 模型使用完全相同的 encoder 配置。
     common_model_kwargs = dict(

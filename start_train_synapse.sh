@@ -32,8 +32,8 @@ export PYTHONUNBUFFERED=1
 
 # 以下变量描述本次 Synapse 训练超参数；数值会传给 train_synapse.py 的同名命令行参数。
 DATASET="Synapse"
-IMG_SIZE=256
-BATCH_SIZE=20
+IMG_SIZE=224
+BATCH_SIZE=16
 MAX_EPOCHS=300
 BASE_LR=1e-4
 # 当前脚本定义了 SUPERVISION，但下方 Python 命令没有传 --supervision，因此实际使用 Python 脚本默认值。
@@ -87,6 +87,8 @@ nohup env RUN_ID="${RUN_ID}" python train_synapse.py \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
   --deterministic "${DETERMINISTIC}" \
+  --adaptive_msdc \
+  --dg_router_mode disagreement \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # $! 是当前 shell 最近启动的后台进程PID，即 nohup/env/python 进程链最终跟踪的训练进程。
