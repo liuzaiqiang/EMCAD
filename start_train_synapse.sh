@@ -9,6 +9,10 @@ CONDA_BASE="/base/mambaforge"
 CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
 
 
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+
+
 CONDA_ENV_NAME="sld_emcad"
 
 
@@ -32,8 +36,8 @@ export PYTHONUNBUFFERED=1
 
 # 以下变量描述本次 Synapse 训练超参数；数值会传给 train_synapse.py 的同名命令行参数。
 DATASET="Synapse"
-IMG_SIZE=256
-BATCH_SIZE=20
+IMG_SIZE=224
+BATCH_SIZE=16
 MAX_EPOCHS=300
 BASE_LR=1e-4
 # 当前脚本定义了 SUPERVISION，但下方 Python 命令没有传 --supervision，因此实际使用 Python 脚本默认值。
