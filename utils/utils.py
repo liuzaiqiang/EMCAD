@@ -402,14 +402,13 @@ class DiceLoss(nn.Module):
 #
 # 输入 pred、gt 应具有相同形状，通常是 [D,H,W] 或单张 [H,W] 的 NumPy 数组，
 # 值可以是 bool、0/1 或任意正数标签。函数会把正值原地改成 1，因此传入的是视图或仍要复用的数组时要注意副作用。
-# MedPy 的 hd95/assd 还依赖前景边界；如果数组没有合适的体素 spacing，本文件调用的是默认像素间距，结果单位是像素而不是真实毫米。test_single_volume 保存 NIfTI 时会写入 z_spacing，但这里计算指标时并没有把 spacing 传给 MedPy，这是当前代码的实际语义。
+# MedPy 的 hd95/assd 还依赖前景边界；如果数组没有合适的体素 spacing，本文件调用的是默认像素间距，结果单位是像素而不是真实毫米。
+# test_single_volume 保存 NIfTI 时会写入 z_spacing，但这里计算指标时并没有把 spacing 传给 MedPy，这是当前代码的实际语义。
 #
-# 空前景分支是历史约定，不能简单按数学公式理解：当前代码对“预测有前景、真值为空”返回 Dice=1、Jaccard=1，这与通常把假阳性判为 0 的评价约定相反；这里保留
-# 原行为，只把它明确写出来，避免阅读者误以为该分支是 MedPy 自动得出的结果。
+# 空前景分支是历史约定，不能简单按数学公式理解：当前代码对“预测有前景、真值为空”返回 Dice=1、Jaccard=1，这与通常把假阳性判为 0 的评价约定相反；这里保留原行为，只把它明确写出来，避免阅读者误以为该分支是 MedPy 自动得出的结果。
 def calculate_metric_percase(pred, gt):
     # 把所有正值统一成前景 1；该操作会原地修改传入数组。
-    # 二值化的目的，是让指标函数只区分“前景/背景”，而不是把不同正整数当作
-    # 不同类别。调用方已经按某个 i 构造了 prediction==i，因此这里通常只是保险。
+    # 二值化的目的，是让指标函数只区分“前景/背景”，而不是把不同正整数当作不同类别。调用方已经按某个 i 构造了 prediction==i，因此这里通常只是保险。
     pred[pred > 0] = 1
     # 对真实标签执行同样二值化。
     gt[gt > 0] = 1
@@ -642,8 +641,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
     metric_list = []
     # 背景不纳入论文常见的器官平均指标，故从类别 1 开始。
     for i in range(1, classes):
-        # 从 1 开始是有意跳过背景：医学分割报告通常关心器官/病灶前景，背景面积
-        # 很大，纳入平均会掩盖前景分割质量。
+        # 从 1 开始是有意跳过背景：医学分割报告通常关心器官/病灶前景，背景面积很大，纳入平均会掩盖前景分割质量。
         # 将多类别图转成第 i 类二值掩膜后计算指标。
         metric_list.append(calculate_metric_percase(prediction == i, label == i))
 

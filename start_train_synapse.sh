@@ -50,7 +50,7 @@ ROOT_PATH="../data/Synapse/train_npz"
 VOLUME_PATH="../data/Synapse/test_vol_h5"
 # DETERMINISTIC=1 请求确定性训练；SEED固定 Python/NumPy/PyTorch 随机序列。
 DETERMINISTIC=1
-SEED=2222
+SEED=3333
 
 # 从系统随机源读取6字节并转为12位十六进制，避免同一秒启动多个任务时 RUN_ID 冲突。
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"

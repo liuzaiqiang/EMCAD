@@ -1,11 +1,12 @@
 # ============================== 初学者阅读总览 ==============================
 # 本文件实现 Synapse 的训练闭环，是理解“数据如何经过模型并产生梯度”的核心入口。
-# 主链路：Synapse_dataset -> DataLoader -> EMCADNet 四个 logits -> 监督组合 ->
-# 0.3*交叉熵+0.7*Dice -> backward -> AdamW.step -> 整体病例验证 -> 保存权重。
-# 论文对应：第 3.3 节解释四个分割头、多阶段损失和输出聚合；第 4.1 节给出  Synapse 的 224x224、300 epoch、batch size 6、AdamW、lr/weight_decay=1e-4、CE:Dice=0.3:0.7。
+# 主链路：Synapse_dataset -> DataLoader -> EMCADNet 四个 logits -> 监督组合 ->  0.3*交叉熵+0.7*Dice -> backward -> AdamW.step -> 整体病例验证 -> 保存权重。
+# 论文对应：
+# 第 3.3 节解释四个分割头、多阶段损失和输出聚合；
+# 第 4.1 节给出  Synapse 的 224x224、300 epoch、batch size 6、AdamW、lr/weight_decay=1e-4、CE:Dice=0.3:0.7。
 # mutation 对 4 个输出的 15 个非空子集逐一计算损失，是当前仓库代码中的监督实现细节；阅读时要与论文第 3.3 节的公式/描述对照。
 # 训练以二维切片为样本：[B,1,H,W]；验证以三维病例为样本：[1,D,H,W]，
-# val_single_volume 再逐切片送入网络，并按 8 个前景器官汇总 Dice。
+# val_single_volume 再逐切片送入网络，并按8个前景器官汇总 Dice。
 # ========================================================================
 
 # argparse 当前未被直接使用，属于从通用训练模板保留的工程导入。
@@ -82,8 +83,7 @@ def inference(args, model, best_performance):
     # 再沿类别维求均值，得到单个 macro mean Dice，用作 checkpoint 选择指标。
     performance = np.mean(metric_list, axis=0)
     # 同时记录当前性能和进入函数前的历史最好性能，便于观察是否刷新 best.pth。
-    logging.info('Testing performance in val model: mean_dice : %f, best_dice : %f' % (
-        performance, best_performance))
+    logging.info('Testing performance in val model: mean_dice : %f, best_dice : %f' % ( performance, best_performance))
     # 返回 Python/NumPy 标量，供训练主循环比较大小。
     return performance
 
@@ -129,7 +129,7 @@ def trainer_synapse(args, model, snapshot_path):
     # trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,worker_init_fn=worker_init_fn)
     # 选择设备；虽然这里有 CPU 回退，入口 train_synapse.py 在此之前已经 model.cuda()，所以整体仍要求 CUDA。
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # 只有机器可见 GPU 数大于 1 且用户要求 n_gpu>1 时，才包裹数据并行。
+    # 只有机器可见GPU数大于1 且用户要求 n_gpu>1 时，才包裹数据并行。
     if torch.cuda.device_count() > 1 and args.n_gpu > 1:
         # 打印的是全部可见 GPU 数，不一定等于 args.n_gpu。
         print("Let's use", torch.cuda.device_count(), "GPUs!")
@@ -145,7 +145,7 @@ def trainer_synapse(args, model, snapshot_path):
     # DiceLoss 会 softmax 后把整数标签 one-hot，逐类计算并平均 9 个类别的 Dice loss。
     dice_loss = DiceLoss(num_classes)
 
-    # 这是保留的 SGD 备选方案，前导 # 使其不执行。
+    # 这是保留的 SGD 备选方案
     # optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
     # 当前实际优化器是 AdamW；weight decay=1e-4 与论文第 4.1 节设置一致。
     optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=0.0001)
