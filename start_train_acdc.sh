@@ -4,10 +4,10 @@ set -euo pipefail
 
 
 # ${VAR:-default} 允许启动前用环境变量覆盖服务器默认 conda 和 Python 命令。
-CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
-PYTHON_BIN="${PYTHON_BIN:-python}"
-
+CONDA_BASE="/home/mlf/anaconda3"
+CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV_PREFIX}"
 
 
 
@@ -24,18 +24,21 @@ mkdir -p "${LOG_DIR}"
 # 只有 conda 初始化脚本存在时才激活环境；不存在时继续使用当前 shell 的 Python 环境。
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
   source "${CONDA_BASE}/etc/profile.d/conda.sh"
-  conda activate "${CONDA_ENV_NAME}"
+  conda activate "${CONDA_ENV_PREFIX}"
 fi
 
-# CUDA_DEVICE 默认0；仅影响本启动进程及子进程。无缓冲输出可让nohup日志实时刷新。
-export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
+
+
+
+
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0,1}"
+#配合export CUDA_VISIBLE_DEVICES=0使用。注意：n_gpu从1开始算
+n_gpu="${n_gpu:-1}"
 export PYTHONUNBUFFERED=1
 SEED="${SEED:-2222}"
-#配合export CUDA_VISIBLE_DEVICES=0使用
-n_gpu="${n_gpu:-1}"
-IMG_SIZE="${IMG_SIZE:-224}"
+IMG_SIZE="${IMG_SIZE:-256}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
-MAX_EPOCHES="${MAX_EPOCHES:-400}"
+MAX_EPOCHS="${MAX_EPOCHS:-400}"
 
 # ACDC 是4类心脏MRI分割；这些环境变量可在调用脚本前覆盖。
 DATASET="ACDC"
@@ -66,8 +69,8 @@ test -f "${PROJECT_DIR}/pretrained_pth/pvt/pvt_v2_b2.pth" || {
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录关键训练规模，RUN_ID额外记录GPU和随机种子。
-LOG_FILE="${LOG_DIR}/train_${DATASET}__imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr${BASE_LR}_max_epoches_${MAX_EPOCHES}_${TS}.log"
-RUN_ID="train_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+LOG_FILE="${LOG_DIR}/train_${DATASET}__imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr_${BASE_LR}_max_epochs_${MAX_EPOCHS}_${TS}.log"
+RUN_ID="train_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${RAND}"
 # 脚本已cd到项目根，因此相对PID文件位于项目根目录。
 PID_FILE="${RUN_ID}.pid"
 
@@ -77,7 +80,7 @@ echo "[INFO] DATASET=${DATASET}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] ROOT_PATH=${ROOT_PATH}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] LIST_DIR=${LIST_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=4" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHES=${MAX_EPOCHES} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SUPERVISION=${SUPERVISION} NUM_WORKERS=${NUM_WORKERS}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SEED=${SEED} n_gpu=${n_gpu}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
@@ -87,7 +90,7 @@ echo "---------------------------ready to train---------------------------------
 
 # 整个反斜杠块是一条后台命令：nohup抵抗终端断开，env注入RUN_ID用于停止时核验进程身份。
 # -u和PYTHONUNBUFFERED共同减少日志缓冲；stdout追加到日志，stderr合并，stdin断开，&立即返回控制权。
-nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_acdc.py \
+nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --root_path "${ROOT_PATH}" \
   --list_dir "${LIST_DIR}" \
   --output_dir "${OUTPUT_DIR}" \
@@ -100,13 +103,12 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_acdc.py \
   --supervision "${SUPERVISION}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
-  --max_epoches "${MAX_EPOCHES}" \
+  --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${n_gpu}" \
   --deterministic "${DETERMINISTIC}" \
   --seed "${SEED}" \
-  --device auto \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # 保存刚启动后台任务的PID；脚本本身成功结束不代表训练完成，只表示启动和PID记录成功。
