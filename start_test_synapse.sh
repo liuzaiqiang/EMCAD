@@ -46,7 +46,7 @@ RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 
 # RUN_ID会注入Python进程环境，PID文件位于已cd到的项目根目录。
-RUN_ID="test_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_${BATCH_SIZE}_seed${seed}_maxepochs_${MAX_EPOCHS}_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 # tee -a把关键路径和运行标识写入日志，RUN_ID另行输出到终端供停止脚本使用。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
@@ -54,8 +54,7 @@ echo "[INFO] VOLUME_PATH=${VOLUME_PATH}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"  | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
-# 硬性检查：路径不存在就直接退出（比跑半天才发现强太多）  ||：逻辑或，含义是：如果左边失败，就执行右边
-#test -f "${CKPT}" || { echo "[ERROR] CKPT not found: ${CKPT}" | tee -a "${LOG_FILE}"; exit 1; }
+
 # VOLUME_PATH不存在时右侧错误块执行并返回退出码1，不会启动后台测试。
 test -d "${VOLUME_PATH}" || { echo "[ERROR] VOLUME_PATH not found: ${VOLUME_PATH}" | tee -a "${LOG_FILE}"; exit 1; }
 
