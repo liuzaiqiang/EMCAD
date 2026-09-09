@@ -6,13 +6,14 @@ set -euo pipefail
 
 CONDA_BASE="/base/mambaforge"
 CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
-
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
-
-
-
 conda activate "${CONDA_ENV_PREFIX}"
 
+
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+#source "${CONDA_BASE}/etc/profile.d/conda.sh"
+#conda activate "${CONDA_ENV_PREFIX}"
 
 
 # BASH_SOURCE[0] 指向当前脚本；进入其目录后取绝对路径，保证从任意工作目录启动都定位到本项目。

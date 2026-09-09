@@ -13,9 +13,14 @@ mkdir -p "${LOG_DIR}"
 
 
 # Synapse测试脚本使用固定conda安装位置和环境名，不读取外部覆盖值。
-CONDA_BASE="/base/mambaforge"
-CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+#CONDA_BASE="/base/mambaforge"
+#CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
 
+
+CONDA_BASE="/home/mlf/anaconda3"
+CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV_PREFIX}"
 
 
 

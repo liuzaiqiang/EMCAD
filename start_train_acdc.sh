@@ -3,7 +3,7 @@
 set -euo pipefail
 
 
-# ${VAR:-default} 允许启动前用环境变量覆盖服务器默认 conda 和 Python 命令。
+
 CONDA_BASE="/home/mlf/anaconda3"
 CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
 source "${CONDA_BASE}/etc/profile.d/conda.sh"

@@ -5,15 +5,19 @@ set -euo pipefail
 # 获取脚本目录绝对路径并切换到项目根，统一后续相对路径语义。
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${PROJECT_DIR}"
-
-# 后台任务的标准输出和错误统一保存在logs目录。
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 # 可由外部覆盖的conda和Python入口；未覆盖时使用服务器默认值。
-CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
-PYTHON_BIN="${PYTHON_BIN:-python}"
+#CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
+#CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
+
+CONDA_BASE="/home/mlf/anaconda3"
+CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV_PREFIX}"
+
+
 
 # conda初始化脚本存在才激活环境，否则使用当前shell已有环境。
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then

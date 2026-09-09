@@ -11,9 +11,14 @@ LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 # 三个入口均可由同名环境变量覆盖，便于适配不同服务器的 conda 安装位置、环境名和 Python 命令。
-CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
-PYTHON_BIN="${PYTHON_BIN:-python}"
+#CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
+#CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
+
+
+CONDA_BASE="/home/mlf/anaconda3"
+CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+source "${CONDA_BASE}/etc/profile.d/conda.sh"
+conda activate "${CONDA_ENV_PREFIX}"
 
 # conda 初始化脚本存在时才加载并激活指定环境；不存在时沿用调用者当前的 Python 环境。
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
