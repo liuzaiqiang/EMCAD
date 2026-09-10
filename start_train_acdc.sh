@@ -4,11 +4,16 @@ set -euo pipefail
 
 
 
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+#source "${CONDA_BASE}/etc/profile.d/conda.sh"
+#conda activate "${CONDA_ENV_PREFIX}"
+
+
+CONDA_BASE="/data/miniconda3"
+CONDA_ENV_PREFIX="/data/miniconda3/envs/sld_emcad"
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
-
 
 
 # 解析脚本所在目录为项目绝对路径，并切换过去，使后续相对路径和PID文件位置稳定。
@@ -69,7 +74,7 @@ test -f "${PROJECT_DIR}/pretrained_pth/pvt/pvt_v2_b2.pth" || {
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录关键训练规模，RUN_ID额外记录GPU和随机种子。
-LOG_FILE="${LOG_DIR}/train_${DATASET}__imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr_${BASE_LR}_max_epochs_${MAX_EPOCHS}_${TS}.log"
+LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr_${BASE_LR}_max_epochs_${MAX_EPOCHS}_${TS}.log"
 RUN_ID="train_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${RAND}"
 # 脚本已cd到项目根，因此相对PID文件位于项目根目录。
 PID_FILE="${RUN_ID}.pid"
