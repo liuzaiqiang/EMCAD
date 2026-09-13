@@ -27,8 +27,7 @@ mkdir -p "${LOG_DIR}"
 
 export CUDA_VISIBLE_DEVICES=0
 export PYTHONUNBUFFERED=1
-#配合export CUDA_VISIBLE_DEVICES=0使用
-n_gpu=1
+
 
 SEED=2222
 DATASET="Synapse"

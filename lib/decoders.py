@@ -14,8 +14,7 @@ from timm.models.helpers import named_apply
 
 
 # ==================================================================================================
-# 本文件阅读总览（这一大段只帮助读代码，不参与模型计算）
-# --------------------------------------------------------------------------------------------------
+# 本文件阅读总览
 # 1. 本文件只实现“解码器”。它不直接读取医学图像，也不直接调用 PVTv2 或 ResNet。
 #    真正的总装入口在 lib/networks.py 的 EMCADNet：
 #        输入图像
@@ -48,7 +47,7 @@ from timm.models.helpers import named_apply
 #        MSDC：用多个大小的深度卷积核观察不同范围的局部区域；
 #        MSCB：先扩通道，再做 MSDC，再压回目标通道，并尽量保留残差；
 #        EUCB：把解码特征放大 2 倍，并改成下一层需要的通道数；
-#        LGAG：用当前解码信息筛选编码器 skip，减少无关低层信息；
+#        LGAG：用当前解码信息筛选编码器skip，减少无关低层信息；
 #        EMCAD：把上述模块按 d4 -> d3 -> d2 -> d1 串成完整解码路径。
 #
 # 5. 这里的“注意力”都不是 PVTv2 中的多头自注意力：
@@ -56,8 +55,7 @@ from timm.models.helpers import named_apply
 #    它们的目标是重新加权已有特征，不是建立 Transformer token 两两之间的注意力矩阵。
 #
 # 6. 当前工程的常用配置由 lib/networks.py 显式传入：kernel_sizes=[1,3,5]、
-#    expansion_factor=2、dw_parallel=True、add=True、lgag_ks=3。虽然下面 EMCAD 类自身的
-#    expansion_factor 默认值写成 6，但通过 EMCADNet 正常创建模型时会被上层默认值 2 覆盖。
+#    expansion_factor=2、dw_parallel=True、add=True、lgag_ks=3。虽然下面 EMCAD 类自身的 expansion_factor 默认值写成 6，但通过EMCADNet正常创建模型时会被上层默认值 2 覆盖。
 #
 # 7. 三个容易混淆的“加法”不是同一件事：
 #        add=True：只控制 MSCB 内多个 MSDC 分支是相加还是沿通道拼接；
@@ -66,15 +64,12 @@ from timm.models.helpers import named_apply
 #    因此命令行中的 concatenation 选项不会把编码器 skip 融合改成 concat。
 #
 # 8. 解码器要求相邻层空间尺寸严格相差 2 倍。项目常用 224、352 等可被 32 整除的输入，
-#    因而 EUCB 放大后的尺寸能与对应 skip 对齐；若任意输入尺寸造成奇数层级，LGAG 中 g1+x1
-#    或后面的 d+x 可能因 H、W 不一致而报错。本文件没有自动裁剪、补零或插值对齐逻辑。
-# ==================================================================================================
+#    因而 EUCB 放大后的尺寸能与对应 skip 对齐；若任意输入尺寸造成奇数层级，LGAG 中 g1+x1或后面的 d+x 可能因 H、W 不一致而报错。本文件没有自动裁剪、补零或插值对齐逻辑。
 
 
 # 计算两个正整数的最大公约数；MSCB 用它确定 channel shuffle 的分组数。
 # 该辅助函数不会创建网络参数，也不会操作张量；它只在 MSCB.forward 中计算一个整数 groups。
-# 例如默认某一级 C_in=C_out=64、expansion_factor=2、add=True 时：
-# combined_channels=128，gcd(128,64)=64，于是 channel_shuffle 把 128 个通道视为 64 组、每组 2 个。
+# 例如默认某一级 C_in=C_out=64、expansion_factor=2、add=True 时：combined_channels=128，gcd(128,64)=64，于是 channel_shuffle 把 128 个通道视为 64 组、每组 2 个。
 # 使用最大公约数的原因是它必然同时整除待重排通道数和输出通道数，能避免非法分组数量。
 # 当前调用路径保证 a、b 都是正通道数；若两者都为 0，本函数会返回 0，而卷积分组不能为 0。
 def gcd(a, b):

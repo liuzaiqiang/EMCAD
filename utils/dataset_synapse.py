@@ -100,7 +100,7 @@ class RandomGenerator(object):
         return sample
 
 
-# Synapse 数据集适配器：训练读取二维 NPZ，验证/测试读取完整三维 HDF5。
+# Synapse数据集适配器：训练读取二维NPZ，验证/测试读取完整三维HDF5。
 class Synapse_dataset(Dataset):
     # base_dir 是实际数据目录，list_dir 保存划分列表，split 决定读取格式。
     def __init__(self, base_dir, list_dir, split, nclass=9, transform=None):

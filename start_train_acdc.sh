@@ -36,9 +36,8 @@ fi
 
 
 
-export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0,1}"
-#配合export CUDA_VISIBLE_DEVICES=0使用。注意：n_gpu从1开始算
-n_gpu="${n_gpu:-1}"
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
+
 export PYTHONUNBUFFERED=1
 SEED="${SEED:-2222}"
 IMG_SIZE="${IMG_SIZE:-256}"

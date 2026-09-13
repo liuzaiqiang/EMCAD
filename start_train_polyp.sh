@@ -40,7 +40,7 @@ CLIP="${CLIP:-0.5}"
 
 # 运行与调试控制：0通常表示“不限制”批次数/验证病例数；DEVICE=auto由Python选择CUDA或CPU。
 NUM_WORKERS="${NUM_WORKERS:-0}"
-N_GPU="${N_GPU:-1}"
+
 DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"

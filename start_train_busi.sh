@@ -47,7 +47,6 @@ MIN_LR="${MIN_LR:-1e-6}"
 
 # DataLoader、随机性、验证/保存周期、调试上限和设备选择。
 NUM_WORKERS="${NUM_WORKERS:-0}"
-N_GPU="${N_GPU:-1}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"

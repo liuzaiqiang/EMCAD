@@ -9,6 +9,8 @@
 
 # argparse 负责把命令行参数（例如 --batch_size 6）转换为 args 对象。
 import argparse
+# datetime 用于输出当前训练入口启动到模型创建完成时的系统时间。
+from datetime import datetime
 # logging 在本入口中虽被导入，但实际日志配置位于 trainer.py；这是保留的工程导入。
 import logging
 # os 用于检查并创建保存权重和日志的实验目录。
@@ -164,28 +166,24 @@ if __name__ == "__main__":
         # parallel 表示多个尺度分支并行提取上下文。
         dw_mode = 'parallel'
 
+    """
     # 手工运行编号；若要真正区分多次运行，需要修改它或通过外部目录管理。
     run = 1
     # 拼出包含主干、卷积核、聚合方式、门控核、扩张倍数、激活和监督策略的实验标识。
-    args.exp = (args.encoder + '_EMCAD_kernel_sizes_' + str(
-        args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef'
-                + str(
-                args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
-                run) + '_' + dataset_name + str(args.img_size))
+    args.exp = (args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' +
+                str(args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(run) + '_' + dataset_name + str(args.img_size))
     # 构造权重保存目录；外层目录含 args.exp，内层再次记录主要结构超参数。
-    snapshot_path = "model_pth/{}/{}".format(args.exp, args.encoder + '_EMCAD_kernel_sizes_' + str(
-        args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef'
-                                             + str(
-        args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
-        run))
+    snapshot_path = "model_pth/{}/{}".format(args.exp, args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(
+        args.lgag_ks) + '_ef' + str(args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(run))
     # 把 Python 列表字符串中的括号和逗号空格清理掉，避免目录名出现 [1, 3, 5]。
-    snapshot_path = snapshot_path.replace('[', '').replace(']', '').replace(', ', '_')
-
+    snapshot_path = snapshot_path.replace(
+        '[', '').replace(']', '').replace(', ', '_')
     # 预训练开启时追加 _pretrain；关闭时保持原目录名不变。
     snapshot_path = snapshot_path + '_pretrain' if not args.no_pretrain else snapshot_path
     # 非默认 max_iterations 只改变目录后缀；取字符串前两位形成类似 30k 的标签。
-    snapshot_path = snapshot_path + '_' + str(args.max_iterations)[
-        0:2] + 'k' if args.max_iterations != 50000 else snapshot_path
+    snapshot_path = snapshot_path + '_' + \
+        str(args.max_iterations)[
+            0:2] + 'k' if args.max_iterations != 50000 else snapshot_path
     # 非默认 epoch 数追加到目录名，便于区分实验。
     snapshot_path = snapshot_path + '_epo' + str(args.max_epochs) if args.max_epochs != 300 else snapshot_path
     # batch size 总是写入目录名。
@@ -201,9 +199,13 @@ if __name__ == "__main__":
     # if not os.path.exists(snapshot_path):
         # 递归建立外层和内层目录。
     # os.makedirs(snapshot_path)
+    """
 
-    # === 简化后的 snapshot_path（Windows / Linux 通用）===
-    exp_name = f"run_seed{args.seed}"
+    # snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
+
+    # 简化后的snapshot_path Windows/Linux 通用
+    # exp_name = f"run_seed{args.seed}"
+    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
     snapshot_path = os.path.join("model_pth", exp_name)
 
     if not os.path.exists(snapshot_path):
@@ -219,10 +221,12 @@ if __name__ == "__main__":
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()
 
-    # 仅打印构建成功提示；实际参数量还会由 EMCADNet 构造函数打印。
-    print('Model successfully created.')
+    # 输出模型创建状态、当前 Python 文件名和系统当前时间，便于对应训练日志。
+    print('Python file:', os.path.basename(__file__), 'Model successfully created.',
+          'Current time:', datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
 
     # 训练器映射允许按数据集名选择函数；当前仍然只支持 Synapse。
     trainer = {'Synapse': trainer_synapse, }
     # 调用真正训练函数，并把配置、已上 GPU 的模型、实验输出目录传入。
+    # 根据当前数据集名称，选择对应的训练函数，并把配置、模型和保存目录传进去，正式启动训练。
     trainer[dataset_name](args, model, snapshot_path)

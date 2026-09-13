@@ -77,10 +77,12 @@ parser.add_argument('--no_dw_parallel', action='store_true',
 # 出现该旗标表示多尺度分支采用 concat；默认 add。
 parser.add_argument('--concatenation', action='store_true',
                     default=False, help='use this flag to concatenate feature maps in MSDC block')
-# 测试时是否加载编码器预训练权重本身不应影响 checkpoint 覆盖后的数值，
+# 测试时是否加载编码器预训练权重本身不应影响checkpoint 覆盖后的数值，
 # 但该开关也参与本脚本的目录名重建，所以必须与训练命名保持一致。
-parser.add_argument('--no_pretrain', action='store_true',
-                    default=False, help='use this flag to turn off loading pretrained enocder weights')
+# action='store_true' 的含义：当为参数指定 action = 'store_true' 时，如果在命令行中提供了该标志（例如运行脚本时加上 - -no_pretrain），则 args.no_pretrain 的值会被自动设置为布尔值 True。
+# 如果命令行中没有提供该标志，则该参数的值会回退到 default 指定的值（在此代码中为 False）。简而言之，它将一个命令行标志转换为一个布尔开关，无需在标志后面额外赋值。
+parser.add_argument('--no_pretrain', action='store_true', default=False,
+                    help='use this flag to turn off loading pretrained enocder weights')
 # 构造模型时 PVT 预训练文件目录；随后完整 checkpoint 会覆盖模型参数。
 parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/',
                     help='path to pretrained encoder dir')
@@ -105,7 +107,7 @@ parser.add_argument('--is_savenii', action="store_true", default=True, help='whe
 
 # 预测保存根目录的初始值；主函数后面会在 is_savenii 分支中重新赋值。
 parser.add_argument('--test_save_dir', type=str, default='predictions', help='saving prediction as nii!')
-# 1 选择确定性 cuDNN 设置，0 优先 benchmark 性能。
+# 1 选择确定性cuDNN设置，0 优先 benchmark 性能。
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 固定 Python、NumPy、PyTorch 和 CUDA 随机状态。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
@@ -121,10 +123,11 @@ if (args.num_classes == 14):
 # 默认 Synapse 配置是 9 类，因此进入此分支。
 else:
     # 8 个名称依次对应标签 1..8；标签 0 背景不单独报告。
-    # classes = ['spleen', 'right kidney', 'left kidney', 'gallbladder', 'pancreas', 'liver', 'stomach', 'aorta']
-    # 上面原始代码，liver和pancreas的位置反了。2026-09-03 20:37:00更新
     classes = ['spleen', 'right kidney', 'left kidney',
-               'gallbladder', 'liver', 'pancreas',  'stomach', 'aorta']
+               'gallbladder', 'pancreas', 'liver', 'stomach', 'aorta']
+
+    # 上面原始代码，liver和pancreas的位置反了。2026-09-03 20:37:00更新
+    # classes = ['spleen', 'right kidney', 'left kidney','gallbladder', 'liver', 'pancreas',  'stomach', 'aorta']
 
 
 # 整个测试集推理函数；test_save_path 控制 NIfTI/PNG 输出位置。
@@ -229,7 +232,7 @@ if __name__ == "__main__":
             'list_dir': args.list_dir,
             # 总类别数，含背景。
             'num_classes': args.num_classes,
-            # z 方向间距配置；当前 inference 调用仍直接传 z_spacing=1。
+            # z方向间距配置；当前 inference 调用仍直接传 z_spacing=1。
             'z_spacing': 1,
             # 结束 Synapse 子配置。
         },
@@ -247,8 +250,8 @@ if __name__ == "__main__":
     args.list_dir = dataset_config[dataset_name]['list_dir']
     # 动态增加 z_spacing 属性。
     args.z_spacing = dataset_config[dataset_name]['z_spacing']
-    # 输出 no_pretrain 布尔值，帮助核对 checkpoint 路径是否应带 _pretrain。
-    print(args.no_pretrain)
+    # 输出 no_pretrain布尔值，帮助核对checkpoint路径是否应带 _pretrain。
+    print("no_pretrain布尔值，帮助核对checkpoint路径是否应带 _pretrain", args.no_pretrain)
 
     # 将聚合方式转换成训练目录名中使用的文本片段。
     if args.concatenation:
@@ -263,17 +266,23 @@ if __name__ == "__main__":
     if args.no_dw_parallel:
         # series 对应 EMCADNet(dw_parallel=False)。
         dw_mode = 'series'
-    # 默认 parallel 对应论文采用的并行多尺度分支。
+    # 默认parallel对应论文采用的并行多尺度分支。
     else:
         # 保存目录名片段。
         dw_mode = 'parallel'
 
     # 固定运行编号必须与 train_synapse.py 中 run=1 一致。
+    """
+    在当前项目中，run = 1 主要用于构建实验标识字符串和 checkpoint 目录路径，其核心作用是区分和索引不同的实验运行记录。
+    具体来说，它参与了以下两处关键路径的构建：
+        实验标识 args.exp 的构建：在代码中，run 被直接拼接到 args.exp 字符串的末尾（体现为 Run1）。这个标识字符串随后被用于创建测试日志目录名（如 test_log/test_log_...Run1_Synapse224）以及预测结果的保存子目录。通过改变 run 的值，可以确保不同次运行的日志和预测结果不会相互覆盖。
+        历史 checkpoint 路径的重建：虽然当前代码中长路径的 snapshot_path 构建逻辑被注释掉了，但在原始设计里，run 同样被用于拼接训练产出的 checkpoint 目录名（如 model_pth/.../...Run1）。测试脚本必须使用与训练脚本一致的 run 值，才能正确回溯并加载对应的模型权重。
+    由于当前代码中 run 被硬编码为 1，它实际上表示这是该组超参数下的第 1 次运行。如果研究者希望用完全相同的超参数进行多次独立训练（例如改变随机种子进行多次实验以计算均值和方差），就需要手动将 run 递增为 2、3 等，从而将不同次实验的产出隔离到不同的 Run 目录中。
+    """
     run = 1
 
     # 用与训练入口相同的规则重建实验标识；任一结构参数不一致都会指向错误目录。
-    args.exp = args.encoder + '_EMCAD_kernel_sizes_' + str(
-        args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
+    args.exp = args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
         args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
         run) + '_' + dataset_name + str(args.img_size)
 
@@ -303,7 +312,9 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_s' + str(args.seed) if args.seed != 1234 else snapshot_path
     """
 
-    snapshot_path = os.path.join("model_pth", f"run_seed{args.seed}")
+    snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}",
+                                 f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
+
 
 
     # 按与 checkpoint 一致的结构构造空模型；num_classes=9 决定四个分割头通道数。
@@ -316,7 +327,8 @@ if __name__ == "__main__":
 
     # 下方是历史 checkpoint 路径示例，整行已注释，不参与运行。
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
-    # 首选加载训练过程中按验证 Dice 选择的 best.pth。
+
+    # 首选加载训练过程中按验证Dice选择的 best.pth。
     snapshot = os.path.join(snapshot_path, 'best.pth')
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
     print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)

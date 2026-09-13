@@ -16,9 +16,6 @@ from timm.models.registry import register_model
 import math
 
 
-# ==================================================================================================
-# 【本文件先读这一段：它在 EMCAD 中究竟负责什么】
-# ==================================================================================================
 # 1. 本文件实现的是 PVTv2（Pyramid Vision Transformer v2）编码器，不负责最终分割预测。
 #    它把一张输入图像逐级编码成 4 张不同分辨率、不同通道数的特征图。
 # 2. `lib/networks.py` 中的 `EMCADNet` 会实例化这里的 `pvt_v2_b2`，然后调用其 `forward`。
@@ -45,11 +42,9 @@ import math
 #    - stage3 的 K/V: 22x22 经 sr=2 变成 11x11；
 #    - stage4 的 K/V: sr=1，原本就是 11x11。
 #    这样前三阶段不必在全部高分辨率 token 之间做完整两两注意力，显著降低显存和计算量。
-# 8. 本文件保留了一些上游分类模型的兼容 API，例如 `get_classifier`、`reset_classifier`、
-#    `freeze_patch_emb` 和 `_conv_filter`。它们并非 EMCAD 当前训练主路径，部分接口甚至缺少配套属性；
+# 8. 本文件保留了一些上游分类模型的兼容 API，例如 `get_classifier`、`reset_classifier`、 `freeze_patch_emb` 和 `_conv_filter`。它们并非 EMCAD 当前训练主路径，部分接口甚至缺少配套属性；
 #    阅读时应把“当前分割前向实际会执行的代码”和“历史兼容代码”分开，不要误以为后者已在训练中生效。
-# 9. 下文所有形状说明都采用：B=batch size，C=通道/嵌入维度，H/W=空间尺寸，N=H*W，
-#    h=注意力头数，d=C/h，N'=空间降采样后的 K/V token 数。
+# 9. 下文所有形状说明都采用：B=batch size，C=通道/嵌入维度，H/W=空间尺寸，N=H*W，h=注意力头数，d=C/h，N'=空间降采样后的 K/V token 数。
 
 
 # PVTv2 的 Mix-FFN：两层全连接之间插入 3x3 depth-wise convolution，引入局部空间信息。
@@ -1079,8 +1074,20 @@ class pvt_v2_b1(PyramidVisionTransformerImpr):
 
 
 # 注册 PVTv2-B2：本项目和论文 PVT-EMCAD-B2 的默认标准编码器。
-# `lib/networks.py` 在选择 PVTv2-B2 时直接构造本类；预训练文件中的 encoder 参数也应与这套固定规格匹配。
+# `lib/networks.py` 在选择 PVTv2-B2 时直接构造本类；预训练文件中的encoder参数(见下面详细注释)也应与这套固定规格匹配。
 # 对 352 输入，最终返回通道/尺寸依次为 `[64x88x88, 128x44x44, 320x22x22, 512x11x11]`（省略 B）。
+
+"""
+这里的“预训练文件中的 encoder 参数”指的是：当使用 PVTv2-B2 作为图像编码器并在大规模数据集（如 ImageNet）上完成预训练后，保存下来的 .pth 权重文件中，归属于编码器部分的全部张量参数。
+具体解析如下：
+    架构层面的“encoder”：在 EMCAD 整体网络中，pvt_v2_b2 负责提取多尺度视觉特征，扮演的就是编码器的角色。而后续接收这些特征并生成分割掩码的部分则是解码器。
+    参数层面的“encoder参数”：在 PyTorch 的 state_dict 字典中，这些参数对应所有以编码器实例路径为前缀的键值对。它们包含了 PVTv2-B2 内部所有可学习权重和偏置，具体包括：
+        四个阶段的 Overlap Patch Embedding 中的卷积权重/偏置与 LayerNorm 权重/偏置；
+        所有 Transformer Block 内的注意力层（Q、KV、输出投影的 Linear 权重/偏置）、空间降采样卷积（sr）权重/偏置；
+        所有 Mix-FFN 中的全连接层（fc1、fc2）权重/偏置及深度卷积（dwconv）权重/偏置；
+        各阶段最终的 LayerNorm 权重/偏置。
+“与这套固定规格匹配”的含义：pvt_v2_b2 的构造参数（如 depths=[3, 4, 6, 3]、embed_dims=[64, 128, 320, 512] 等）是硬编码的。这些配置决定了上述参数的张量形状和数量。因此，预训练权重文件中 encoder 参数的形状必须与当前代码定义的 B2 规格严格一致，否则在执行 load_state_dict 时会因维度不匹配而报错。
+"""
 @register_model
 class pvt_v2_b2(PyramidVisionTransformerImpr):
     # 当前 kwargs 未透传。

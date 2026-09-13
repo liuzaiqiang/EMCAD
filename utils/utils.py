@@ -678,15 +678,21 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
 
 
 # 验证阶段的病例级推理：流程与 test_single_volume 类似，但只返回逐类 Dice 且不保存图像。
-#
 # 调用位置：trainer.py 的 inference() 在每个 epoch 后调用本函数，得到一个病例中每个前景器官的 Dice，再跨病例平均，并用 mean Dice 决定是否保存 best.pth。
-#
 # 与 test_single_volume 的差别是“验证阶段只保留选择 checkpoint 所需的最小结果”：不创建 overlay_masks 图、不写 PNG/NIfTI、不计算 HD95/Jaccard/ASD，只返回长度classes-1 的 Dice 列表。
-# 此它通常比完整测试更快，但不能替代最终的病例级指标报告。
+# 它通常比完整测试更快，但不能替代最终的病例级指标报告。
 # 参数 test_save_path、case、z_spacing 为了兼容旧调用接口而保留，在当前函数体中没有参与保存或 Dice 计算；看到它们不要误以为验证阶段会写文件。
-#
 # 输入形状约定与 test_single_volume 相同：DataLoader 的 [1,D,H,W] 会先变成 [D,H,W]，
 # 然后逐切片 resize、前向、还原尺寸并拼回 prediction；若输入已经是 [H,W]，则只做一次前向。函数同样硬编码 .cuda()，所以当前验证实现要求 CUDA 环境。
+
+"""
+overlay_masks 是从外部库 segmentation_mask_overlay 导入的一个可视化函数。
+它的具体作用是：将多个类别的二值布尔掩膜，以指定的颜色和透明度，半透明地叠加到原始的二维灰度图像（如 CT 切片）上，并返回一个 Matplotlib 的 figure 对象。
+在当前代码的 test_single_volume 函数中，overlay_masks 被用于测试阶段的可视化保存。具体逻辑分为两步：
+    真值可视化：将真实标签的多类别掩膜叠加到原始 CT 切片上，生成带有器官区域颜色标注的图像。
+    预测可视化：将模型预测的多类别掩膜以完全相同的颜色配置叠加到同一 CT 切片上，生成预测结果的标注图像。
+通过这种方式，可以直观地对比模型预测的器官区域与真实器官区域的位置和形状差异。该函数仅用于结果的可视化检查与论文插图生成，不参与任何分割指标的计算或模型的梯度更新。
+"""
 def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1):
     # 去掉 batch 维、转到 CPU，并转换为 NumPy 体数据。
     # 验证只做前向和指标，不需要保留 PyTorch 图；把数据转 NumPy 后可以直接使用

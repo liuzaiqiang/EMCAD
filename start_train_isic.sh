@@ -43,7 +43,6 @@ MIN_LR="${MIN_LR:-1e-6}"
 
 # 数据加载、可复现性、保存/验证频率和调试上限；0上限表示由Python处理为不限制。
 NUM_WORKERS="${NUM_WORKERS:-0}"
-N_GPU="${N_GPU:-1}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"
