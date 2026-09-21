@@ -81,14 +81,11 @@ def powerset(seq):
 
 # 按元素把所有参数梯度截断到 [-grad_clip, grad_clip]，避免极端梯度值。
 #
-# 调用位置：旧版/SLDGroup 息肉训练脚本在 loss.backward() 之后、
-# optimizer.step() 之前调用 clip_gradient(optimizer, opt.clip)。此时梯度已经写入每个 Parameter.grad，但参数还没有更新，所以这里可以安全地先处理梯度。
-#
+# 调用位置：旧版/SLDGroup 息肉训练脚本在 loss.backward() 之后、optimizer.step() 之前调用 clip_gradient(optimizer, opt.clip)。
+# 此时梯度已经写入每个 Parameter.grad，但参数还没有更新，所以这里可以安全地先处理梯度。
 # 为什么需要梯度裁剪：某个batch、某个尺度或某条深监督路径可能产生异常大的梯度；若直接交给优化器，单步参数变化可能过大，表现为 loss 突然爆炸、NaN，或训练被一个异常样本破坏。
 # 裁剪只能限制更新的输入，不能修复错误标签或不合理学习率，也不能保证梯度方向正确。
-#
-# 重要区别：当前实现是“逐元素裁剪”（element-wise clamp），每个梯度元素独立限制在 [-grad_clip, grad_clip]；
-# 它不是按整个梯度向量的 L2 范数裁剪。两者对梯度方向和大小的影响不同，阅读实验配置时不要把它们当成同一种策略。
+# 重要区别：当前实现是“逐元素裁剪”（element-wise clamp），每个梯度元素独立限制在 [-grad_clip, grad_clip]；它不是按整个梯度向量的 L2 范数裁剪。两者对梯度方向和大小的影响不同，阅读实验配置时不要把它们当成同一种策略。
 def clip_gradient(optimizer, grad_clip):
     """
         利用裁剪梯度技术标定不对准梯度
@@ -112,16 +109,14 @@ def clip_gradient(optimizer, grad_clip):
 
 
 # 按固定 epoch 周期计算学习率衰减因子并作用到优化器参数组。
-#
 # 调用位置：train_polyp_SLDGroup.py 在每个 epoch 开始处调用本函数，然后才进入train(...)。
 # 它属于旧的阶梯式学习率策略；同一脚本随后还会在 epoch 末执行CosineAnnealingLR，因此如果两个策略同时有效，学习率会叠加变化。
-#
 # 参数含义：
-# optimizer 是待修改的优化器；
-# init_lr 在当前实现中没有被使用；
-# epoch  当前轮次；
-# decay_epoch 表示每隔多少轮衰减一次；
-# decay_rate 是每次衰减乘上的比例。按公式，epoch=0..29 时 decay=1，epoch=30..59 时 decay=decay_rate。
+    # optimizer 是待修改的优化器；
+    # init_lr 在当前实现中没有被使用；
+    # epoch  当前轮次；
+    # decay_epoch 表示每隔多少轮衰减一次；
+    # decay_rate 是每次衰减乘上的比例。按公式，epoch=0..29 时 decay=1，epoch=30..59 时 decay=decay_rate。
 #
 # 代码风险提示：这里使用 param_group['lr'] *= decay，而不是基于 init_lr 重新计算。
 # 如果调用方每个 epoch 都调用一次，且 epoch//decay_epoch 在同一阶段保持不变，
@@ -138,9 +133,7 @@ def adjust_lr(optimizer, init_lr, epoch, decay_rate=0.1, decay_epoch=30):
 
 
 # 维护标量的当前值、累计平均值和最近若干次记录。
-#
 # 调用位置：train_polyp_SLDGroup.py 创建 AvgMeter() 记录训练损失。每个原始 batch可能包含多个尺度更新，但旧脚本只在 rate==1 时调用 update；因此这里显示的是代码选择记录的那些 loss，不一定等于所有优化器 step 的严格平均值。
-#
 # 这个类同时维护两种“平均”：
 # avg 是从 reset() 开始的全历史加权平均，
 # show() 是最近 num 次记录的滑动平均。终端进度条通常使用 show()，因为短窗口能减少单个batch 的噪声；最终汇总时可使用 avg。val、sum、count 等字段不是模型参数，只是
@@ -193,10 +186,9 @@ class AvgMeter(object):
         return torch.mean(torch.stack(self.losses[np.maximum(len(self.losses) - self.num, 0):]))
 
 
+
 # 使用 THOP 计算给定 model 和实际 input_tensor 的 FLOPs/参数量并打印。
-#
-# 适用场景：在模型正式训练前，给一个已经构造好的网络和一份“代表性输入”，
-# 快速估计一次前向传播的计算量与参数量。它是实验记录/模型对比工具，不会计算loss、不会调用 backward，也不会更新权重。
+# 适用场景：在模型正式训练前，给一个已经构造好的网络和一份“代表性输入”，快速估计一次前向传播的计算量与参数量。它是实验记录/模型对比工具，不会计算loss、不会调用 backward，也不会更新权重。
 # input_tensor 的形状和设备必须与 model.forward() 的真实接口一致；如果网络要求 [B,1,H,W]，就不能随便传 [B,3,H,W]。
 # THOP 是通过 forward hook 观察模块执行来估算 FLOPs，因此含有自定义算子、动态分支或多个输出时，统计值可能只是近似值。
 # 不同工具（THOP、ptflops）对一次乘加是否算 1 次或 2 次操作的口径也可能不同，论文中比较复杂度时要保持工具和输入尺寸一致。
@@ -225,9 +217,8 @@ def CalParams(model, input_tensor):
 
 # 把整数类别标签 [B,H,W] 转成张量 [B,C,H,W]。
 # 这个函数服务于多分类 Dice 计算：
-# CrossEntropyLoss 可以直接接收 [B,H,W] 的整数标签，但 Dice 需要对每个类别分别做交集，因此要把一个像素的类别编号转换为 C 个 0/1 通道。
-# 例如标签像素值为 2 时，one-hot 的四类通道应为 [0,0,1,0]。
-#
+# CrossEntropyLoss 可以直接接收 [B,H,W] 的整数标签，但 Dice 需要对每个类别分别做交集，因此要把一个像素的类别编号转换为C个0/1 通道。
+# 例如标签像素值为2时，one-hot 的四类通道应为 [0,0,1,0]。
 # input_tensor 预期是整数类别图，常见形状为 [B,H,W]；返回值形状为 [B,C,H,W]，类型为 float32。返回浮点而不是 bool，是因为后续要和网络概率逐元素相乘并求和。
 # dataset == 'MMWHS' 是特殊分支：该数据集的标签值不是连续的 0,1,2,...，而是 [0,205,420,...] 这样的编码；其他数据集必须提供 n_classes，并且标签值连续。
 # 当前 EMCAD 的 Synapse 训练路径主要使用 DiceLoss 类内部的同类逻辑；这个公开函数是通用/历史接口，trainer.py 虽然导入了它，但当前训练循环不一定直接调用。
@@ -287,15 +278,12 @@ def one_hot_encoder(input_tensor, dataset, n_classes=None):
 class DiceLoss(nn.Module):
     # n_classes 必须等于网络输出 logits 的通道数。
     def __init__(self, n_classes):
-        # nn.Module 的初始化会建立 _parameters、_modules 等内部字典；不调用它，
-        # 这个类虽然可能能算一次数值，但不能可靠地作为 PyTorch 模块使用。
-        # 初始化 nn.Module 内部状态。
+        # nn.Module 的初始化会建立 _parameters、_modules 等内部字典；不调用它，这个类虽然可能能算一次数值，但不能可靠地作为 PyTorch 模块使用。初始化 nn.Module 内部状态。
         super(DiceLoss, self).__init__()
         # 保存类别数供独热编码和逐类循环使用。
         self.n_classes = n_classes
 
     # 类内部的连续标签到独热标签转换。
-    #
     # 这里与上面的公开 one_hot_encoder 逻辑相似，但不接收 dataset 参数；它专门
     # 服务当前 DiceLoss，假设 target 的类别编号已经是连续的 0..n_classes-1。
     # target [B,H,W] 经过循环后变为 [B,C,H,W]，从而能与 inputs 的每个类别通道
@@ -395,11 +383,9 @@ class DiceLoss(nn.Module):
 
 
 # 计算单个二值类别的 Dice、HD95、Jaccard 和 ASSD。
-#
 # 调用位置：test_single_volume 在每个前景类别上把 prediction==i 和 label==i
 # 转成布尔掩膜后调用本函数；test_synapse.py 再把每个病例返回的四元组汇总。
 # 这里的“percase”指一个病例、一个类别，而不是整个数据集一次性计算。
-#
 # 输入 pred、gt 应具有相同形状，通常是 [D,H,W] 或单张 [H,W] 的 NumPy 数组，
 # 值可以是 bool、0/1 或任意正数标签。函数会把正值原地改成 1，因此传入的是视图或仍要复用的数组时要注意副作用。
 # MedPy 的 hd95/assd 还依赖前景边界；如果数组没有合适的体素 spacing，本文件调用的是默认像素间距，结果单位是像素而不是真实毫米。
@@ -463,7 +449,7 @@ def calculate_dice_percase(pred, gt):
         return 0
 
 
-# 对一个 Synapse 病例执行逐切片推理、逐类指标计算，并可保存可视化和 NIfTI。
+# 对一个 Synapse 病例执行逐切片推理、逐类指标计算，并可保存可视化和NIfTI。
 # 这是本文件最重要的“测试集/整病例”函数。
 # 训练阶段通常把二维切片作为样本，但医学论文的病例级结果要把同一个病人的所有切片重新组合起来；本函数就是这个桥梁。典型调用来自 test_synapse.py：
 #
@@ -476,19 +462,16 @@ def calculate_dice_percase(pred, gt):
 #   z_spacing: 保存 NIfTI 时使用的 z 方向体素间距；
 #   class_names: 可选的前景器官名称，用于叠加图标签。
 #
-# 核心顺序是：去 batch -> 逐切片 resize -> CUDA 前向 -> softmax/argmax ->还原切片尺寸 -> 拼回 prediction -> 对每个前景类别计算指标 -> 可选保存结果。
+# 核心顺序是：去 batch -> 逐切片 resize -> CUDA前向 -> softmax/argmax ->还原切片尺寸 -> 拼回 prediction -> 对每个前景类别计算指标 -> 可选保存结果。
 # resize 图像时用三次插值，因为 CT 灰度是连续值；resize 离散类别预测时用最近邻插值，因为线性/三次插值会生成 1.3 之类不存在的类别编号。
 #
 # 当前实现有几个必须知道的运行前提：函数内部硬编码 .cuda()，所以没有 CUDA 时即使调用方选择 CPU 也会失败；
 # net.eval() 在每张切片循环内重复调用，语义正确但有少量额外开销；
 # 三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
 # 这些历史行为，只在注释中把它们标明，便于你沿调用链排查问题。
-def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,
-                       class_names=None):
+def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,  class_names=None):
     # DataLoader 增加了 batch 维；去掉 batch 后搬到 CPU、断开计算图并转为 NumPy。
-    # 评估函数不需要继续建立 autograd 图；detach() 解除历史计算图引用，cpu() 让
-    # 后面的 NumPy、SciPy 和 SimpleITK 接口可以使用。若传入的是 [D,H,W] 而不是
-    # [1,D,H,W]，squeeze(0) 仍可能误删深度维，调用方必须保持约定的 batch 形状。
+    # 评估函数不需要继续建立 autograd 图；detach() 解除历史计算图引用，cpu() 让后面的 NumPy、SciPy 和 SimpleITK 接口可以使用。若传入的是 [D,H,W] 而不是[1,D,H,W]，squeeze(0) 仍可能误删深度维，调用方必须保持约定的 batch 形状。
     image, label = image.squeeze(0).cpu().detach().numpy(), label.squeeze(0).cpu().detach().numpy()
     # 未提供器官名称时，用类别索引 1..C-1 作为图例标签。
     if class_names == None:
@@ -501,15 +484,12 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
         # 例如 Synapse 的 spleen、right kidney 等八个前景名称。
         mask_labels = class_names
     # 取得 Matplotlib CSS4 颜色名称到色值的映射。
-    # overlay_masks 接收的是颜色字典，而不是类别编号到颜色的直接数组；下面会
-    # 用同一套 cmap 同时绘制 ground truth 和 prediction，保证颜色能逐类对应。
+    # overlay_masks 接收的是颜色字典，而不是类别编号到颜色的直接数组；下面会用同一套 cmap 同时绘制 ground truth 和 prediction，保证颜色能逐类对应。
     cmaps = mcolors.CSS4_COLORS
     # 为最多十三个前景类别预设对比明显的颜色顺序。
-    my_colors = ['red', 'darkorange', 'yellow', 'forestgreen', 'blue', 'purple', 'magenta', 'cyan', 'deeppink',
-                 'chocolate', 'olive', 'deepskyblue', 'darkviolet']
+    my_colors = ['red', 'darkorange', 'yellow', 'forestgreen', 'blue', 'purple', 'magenta', 'cyan', 'deeppink', 'chocolate', 'olive', 'deepskyblue', 'darkviolet']
     # 只保留前 C-1 个指定颜色，构造 overlay_masks 接收的颜色字典。
-    # sorted(cmaps.keys()) 只是建立稳定的字典顺序；真正选中的颜色由 my_colors
-    # 过滤。classes 超过预设颜色数量时，颜色字典不会自动扩容，可能导致图例颜色
+    # sorted(cmaps.keys()) 只是建立稳定的字典顺序；真正选中的颜色由 my_colors过滤。classes 超过预设颜色数量时，颜色字典不会自动扩容，可能导致图例颜色
     # 不足，这是当前可视化配置的边界条件。
     cmap = {k: cmaps[k] for k in sorted(cmaps.keys()) if k in my_colors[:classes - 1]}
     # 三维输入按 [D,H,W] 逐轴向切片送入二维 EMCAD 网络。
