@@ -11,6 +11,7 @@ from lib.pvtv2 import pvt_v2_b0, pvt_v2_b1, pvt_v2_b2, pvt_v2_b3, pvt_v2_b4, pvt
 from lib.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 # EMCAD 是论文提出的解码器，接收四级编码特征并逐级恢复空间分辨率。
 from lib.decoders import EMCAD
+from lib.disagreement_refinement import EMCADDisagreementRefiner
 
 
 # ===========================================================
@@ -61,7 +62,8 @@ class EMCADNet(nn.Module):
     # --------------------------------------------------------------------------
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
-                 activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/'):
+                 activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
+                 refinement_mode='off', refinement_tile_size=16, refinement_tile_ratio=0.25):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
         # conv block to convert single channel to 3 channels
@@ -200,6 +202,14 @@ class EMCADNet(nn.Module):
         self.decoder = EMCAD(channels=channels, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
                              dw_parallel=dw_parallel, add=add, lgag_ks=lgag_ks, activation=activation)
 
+        # Default EMCAD has no added parameters; candidate modes add one output-side module only.
+        if refinement_mode not in {'off', 'dense', 'uniform', 'disagreement'}:
+            raise ValueError('refinement_mode must be off, dense, uniform, or disagreement')
+        self.refinement_mode = refinement_mode
+        self.refiner = None if refinement_mode == 'off' else EMCADDisagreementRefiner(
+            num_classes=num_classes, tile_size=refinement_tile_size, tile_ratio=refinement_tile_ratio
+        )
+
         # 打印仅 EMCAD 解码器的参数量，便于核对轻量化设计。解码器参数统计不包含编码器和下面的四个 segmentation head。
         print('Model %s created, param count: %d' % ('EMCAD decoder: ',
                                                      sum([m.numel() for m in self.decoder.parameters()])))
@@ -265,6 +275,10 @@ class EMCADNet(nn.Module):
         p2 = F.interpolate(p2, scale_factor=8, mode='bilinear')
         # p1 固定放大 4 倍；四个结果现在均为 (B,K,H,W)。
         p1 = F.interpolate(p1, scale_factor=4, mode='bilinear')
+
+        # Refine only the final full-resolution EMCAD logit p1; p4/p3/p2 and supervision stay intact.
+        if self.refiner is not None:
+            p1, _ = self.refiner(p1, p2, self.refinement_mode)
 
         # 论文第5页 Sec.3.3 把最后解码阶段称为 p4；本代码按反方向编号，外部推理实际取返回列表 P[-1]，即这里的 p1。
         if mode == 'test':

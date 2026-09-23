@@ -54,7 +54,7 @@ PID_FILE="${RUN_ID}.pid"
 # RUN_ID 单独再次输出到终端，便于复制给对应 stop 脚本。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null 
 echo "[INFO] DATASET=${DATASET}"  | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=${NUM_CLASSES}"  | tee -a "${LOG_FILE}" > /dev/null
+#echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=${NUM_CLASSES}"  | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] LIST_DIR=${LIST_DIR}"  | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SEED=${SEED}"  | tee -a "${LOG_FILE}" > /dev/null
@@ -77,6 +77,11 @@ nohup env RUN_ID="${RUN_ID}" python train_synapse.py \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
   --deterministic "${DETERMINISTIC}" \
+   --run_name "${RUN_ID}" \
+  --refinement_mode disagreement \
+  --refinement_tile_size 16 \
+  --refinement_tile_ratio 0.25 \
+  --output_dir ./model_pth/Synapse \
   --supervision "${SUPERVISION}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

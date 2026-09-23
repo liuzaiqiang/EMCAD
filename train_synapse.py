@@ -9,6 +9,8 @@
 
 # argparse 负责把命令行参数（例如 --batch_size 6）转换为 args 对象。
 import argparse
+# JSON 保存每次运行的解析后配置，供同 seed 配对实验审计。
+import json
 # datetime 用于输出当前训练入口启动到模型创建完成时的系统时间。
 from datetime import datetime
 # logging 在本入口中虽被导入，但实际日志配置位于 trainer.py；这是保留的工程导入。
@@ -90,6 +92,11 @@ parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
+parser.add_argument('--refinement_mode', choices=['off', 'dense', 'uniform', 'disagreement'], default='off')
+parser.add_argument('--refinement_tile_size', type=int, default=16)
+parser.add_argument('--refinement_tile_ratio', type=float, default=0.25)
+parser.add_argument('--output_dir', type=str, default='./model_pth/Synapse')
+parser.add_argument('--run_name', type=str, required=True, help='unique output subdirectory; existing paths are rejected')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
 
@@ -205,18 +212,22 @@ if __name__ == "__main__":
 
     # 简化后的snapshot_path Windows/Linux 通用
     # exp_name = f"run_seed{args.seed}"
-    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
-    snapshot_path = os.path.join("model_pth", exp_name)
-
-    if not os.path.exists(snapshot_path):
-        os.makedirs(snapshot_path)
+    snapshot_path = os.path.join(args.output_dir, args.run_name)
+    if os.path.exists(snapshot_path):
+        raise FileExistsError("Refusing to reuse experiment directory: {}".format(snapshot_path))
+    os.makedirs(snapshot_path, exist_ok=False)
+    # 保存独立实验配置快照；不触碰已有实验记录或 checkpoint。
+    with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
+        json.dump(vars(args), stream, ensure_ascii=False, indent=2)
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     refinement_mode=args.refinement_mode, refinement_tile_size=args.refinement_tile_size,
+                     refinement_tile_ratio=args.refinement_tile_ratio)
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

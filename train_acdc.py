@@ -87,6 +87,9 @@ def parse_args():
     parser.add_argument("--run_name", default=None)
     # 可选初始化 checkpoint；只加载模型参数，不恢复优化器/epoch。
     parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--refinement_mode", choices=["off", "dense", "uniform", "disagreement"], default="off")
+    parser.add_argument("--refinement_tile_size", type=int, default=16)
+    parser.add_argument("--refinement_tile_ratio", type=float, default=0.25)
 
     # 编码器类型，默认论文主干之一 PVTv2-B2。
     parser.add_argument("--encoder", default="pvt_v2_b2")
@@ -306,6 +309,8 @@ def main():
         args.run_name = "acdc_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
     # 本次实验目录=<output_dir>/<run_name>。
     snapshot_path = os.path.join(args.output_dir, args.run_name)
+    if os.path.exists(snapshot_path):
+        raise FileExistsError("Refusing to reuse experiment directory: {}".format(snapshot_path))
     # 递归创建目录；已存在时复用。
     os.makedirs(snapshot_path, exist_ok=True)
 

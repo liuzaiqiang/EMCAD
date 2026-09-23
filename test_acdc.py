@@ -67,9 +67,14 @@ def parse_args():
     # 划分清单目录，测试时要求 test.txt。
     parser.add_argument("--list_dir", default="./data/ACDC/lists/lists_ACDC")
     # 预测/日志目录；None 时放在 checkpoint 同级 predictions/。
-    parser.add_argument("--output_dir", default=None)
+    parser.add_argument("--output_dir", required=True, help="new, non-existing directory for this evaluation")
     # 指标 CSV 路径；None 时放在 checkpoint 同级 test_metrics.csv。
     parser.add_argument("--output_csv", default=None)
+
+    # 候选输出端模块的结构与训练配置必须一致，baseline 默认为完全关闭。
+    parser.add_argument("--refinement_mode", choices=["off", "dense", "uniform", "disagreement"], default="off")
+    parser.add_argument("--refinement_tile_size", type=int, default=16)
+    parser.add_argument("--refinement_tile_ratio", type=float, default=0.25)
 
     # 编码器架构必须与 checkpoint 训练时一致。
     parser.add_argument("--encoder", default="pvt_v2_b2")
@@ -181,11 +186,16 @@ def main():
     # checkpoint_dir 是权重文件所在实验目录。
     checkpoint_dir = os.path.dirname(os.path.abspath(args.checkpoint))
     # 未指定 output_dir 时在实验目录下创建 predictions。
-    output_dir = args.output_dir or os.path.join(checkpoint_dir, "predictions")
-    # 未指定 output_csv 时在实验目录根部写 test_metrics.csv。
-    output_csv = args.output_csv or os.path.join(checkpoint_dir, "test_metrics.csv")
-    # 创建预测/日志目录。
-    os.makedirs(output_dir, exist_ok=True)
+    output_dir = args.output_dir
+    # 默认把病例级指标表写进本次独立评估目录。
+    output_csv = args.output_csv or os.path.join(output_dir, "test_metrics.csv")
+    # 已有结果目录或 CSV 时中止，避免重复测试覆盖既有结果。
+    if os.path.exists(output_dir):
+        raise FileExistsError("Refusing to reuse evaluation output directory: {}".format(output_dir))
+    if os.path.exists(output_csv):
+        raise FileExistsError("Refusing to overwrite evaluation CSV: {}".format(output_csv))
+    # 仅创建本次全新输出目录。
+    os.makedirs(output_dir, exist_ok=False)
     # 创建 CSV 父目录；abspath 保证即使只给文件名也能得到有效目录。
     os.makedirs(os.path.dirname(os.path.abspath(output_csv)), exist_ok=True)
 

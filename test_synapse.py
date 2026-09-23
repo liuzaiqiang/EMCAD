@@ -10,6 +10,8 @@
 
 # argparse 解析测试路径、网络结构和保存选项。
 import argparse
+# csv 输出逐病例、逐器官评估记录，便于同 seed 配对分析。
+import csv
 # logging 将逐病例与逐类别指标写入文件并同步输出到终端。
 import logging
 # os 负责 checkpoint、日志和预测目录的拼接/创建。
@@ -86,6 +88,16 @@ parser.add_argument('--no_pretrain', action='store_true', default=False,
 # 构造模型时 PVT 预训练文件目录；随后完整 checkpoint 会覆盖模型参数。
 parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/',
                     help='path to pretrained encoder dir')
+# 新增模块结构必须与训练一致；默认 off 与旧 EMCAD checkpoint 完全兼容。
+parser.add_argument('--refinement_mode', choices=['off', 'dense', 'uniform', 'disagreement'], default='off')
+parser.add_argument('--refinement_tile_size', type=int, default=16)
+parser.add_argument('--refinement_tile_ratio', type=float, default=0.25)
+# 显式 checkpoint 路径避免依靠历史目录命名猜测实验权重。
+parser.add_argument('--checkpoint', type=str, default=None, help='explicit checkpoint path; recommended for all formal evaluations')
+# 指定本次推理的独立结果目录；目标目录已存在时拒绝覆盖。
+parser.add_argument('--output_dir', type=str, required=True, help='new, non-existing directory for this evaluation')
+# 逐病例指标表默认保存在本次 output_dir 内。
+parser.add_argument('--output_csv', type=str, default=None, help='patient-level metrics CSV path')
 # 监督策略不参与测试前向，却参与 checkpoint 目录名，因此仍需匹配训练命令。
 parser.add_argument('--supervision', type=str,
                     default='mutation', help='loss supervision: mutation, deep_supervision or last_layer')
@@ -138,6 +150,8 @@ def inference(args, model, test_save_path=None):
     testloader = DataLoader(db_test, batch_size=1, shuffle=False, num_workers=1)
     # 记录病例级迭代总数。
     logging.info("{} test iterations per epoch".format(len(testloader)))
+    # 每行记录一个患者的逐器官指标及其器官宏平均。
+    patient_rows = []
     # eval 模式固定 BatchNorm 统计并关闭 Dropout 随机性。
     model.eval()
     # 第一次加 NumPy 数组后，metric_list 会成为 [8,4]：8 类 x 4 指标。
@@ -154,6 +168,14 @@ def inference(args, model, test_save_path=None):
                                       patch_size=[args.img_size, args.img_size],
                                       # z_spacing=1 用于保存体数据间距；class_names 用于叠加图图例和日志语义。
                                       test_save_path=test_save_path, case=case_name, z_spacing=1, class_names=classes)
+        # 保留现有评估函数返回的全部类别指标，不重新定义空类或聚合口径。
+        patient_row = {'case_name': case_name}
+        metric_names = ('dice', 'hd95', 'jaccard', 'asd')
+        for class_index, class_name in enumerate(classes):
+            for metric_index, metric_name in enumerate(metric_names):
+                patient_row['{}_{}'.format(class_name.replace(' ', '_'), metric_name)] = float(metric_i[class_index][metric_index])
+        patient_row['mean_dice'] = float(np.mean(metric_i, axis=0)[0])
+        patient_rows.append(patient_row)
         # 把当前 [8,4] 指标矩阵加到跨病例累计值。
         metric_list += np.array(metric_i)
         # 先沿类别维求当前病例的 4 项宏平均并写日志。
@@ -192,6 +214,16 @@ def inference(args, model, test_save_path=None):
     logging.info(
         'Testing performance in best val model: mean_dice : %f mean_hd95 : %f, mean_jacard : %f mean_asd : %f' % (
             performance, mean_hd95, mean_jacard, mean_asd))
+    # 输出与日志完全同源的患者级原始表；正式配对统计应以 case_name 对齐各实验行。
+    if args.output_csv:
+        fieldnames = ['case_name']
+        for class_name in classes:
+            fieldnames.extend('{}_{}'.format(class_name.replace(' ', '_'), metric_name) for metric_name in metric_names)
+        fieldnames.append('mean_dice')
+        with open(args.output_csv, 'w', newline='', encoding='utf-8') as stream:
+            writer = csv.DictWriter(stream, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(patient_rows)
     # 函数只返回状态字符串，真正数值保存在日志中。
     return "Testing Finished!"
 
@@ -321,7 +353,9 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     refinement_mode=args.refinement_mode, refinement_tile_size=args.refinement_tile_size,
+                     refinement_tile_ratio=args.refinement_tile_ratio)
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 
@@ -329,20 +363,28 @@ if __name__ == "__main__":
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
 
     # 首选加载训练过程中按验证Dice选择的 best.pth。
-    snapshot = os.path.join(snapshot_path, 'best.pth')
+    snapshot = args.checkpoint or os.path.join(snapshot_path, 'best.pth')
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
     print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)
     # 若 best.pth 不存在，则回退到零基编号的最后 epoch 文件，例如 epoch_299.pth。
-    if not os.path.exists(snapshot): snapshot = snapshot.replace('best', 'epoch_' + str(args.max_epochs - 1))
+    if args.checkpoint is None and not os.path.exists(snapshot): snapshot = snapshot.replace('best', 'epoch_' + str(args.max_epochs - 1))
     # torch.load 读取 state_dict，load_state_dict 默认 strict=True；没有 map_location，要求当前 CUDA 环境兼容。
-    model.load_state_dict(torch.load(snapshot))
+    if not os.path.isfile(snapshot):
+        raise FileNotFoundError('Checkpoint does not exist: {}'.format(snapshot))
+    model.load_state_dict(torch.load(snapshot, map_location='cpu'), strict=True)
     # 以正斜杠切分路径得到内层目录名；在纯 Windows 反斜杠路径上此写法需要留意。
     snapshot_name = snapshot_path.split('/')[-1]
 
     # 测试日志按实验标识放入 test_log/test_log_<exp>。
-    log_folder = 'test_log/test_log_' + args.exp
-    # 递归创建日志目录，存在时不报错。
-    os.makedirs(log_folder, exist_ok=True)
+    log_folder = args.output_dir
+    if os.path.exists(log_folder):
+        raise FileExistsError('Refusing to reuse evaluation output directory: {}'.format(log_folder))
+    # 新建结果目录；已存在时拒绝覆盖该目录内的日志或分割产物。
+    os.makedirs(log_folder, exist_ok=False)
+    # 默认把患者级指标表放进这次新建的结果目录。
+    args.output_csv = args.output_csv or os.path.join(log_folder, 'patient_metrics.csv')
+    if os.path.exists(args.output_csv):
+        raise FileExistsError('Refusing to overwrite evaluation CSV: {}'.format(args.output_csv))
     # 文件名取 snapshot_name；配置时间格式与训练日志一致。
     logging.basicConfig(filename=log_folder + '/' + snapshot_name + ".txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
@@ -355,12 +397,8 @@ if __name__ == "__main__":
 
     # 当前 is_savenii 因 default=True 实际总会进入该分支。
     if args.is_savenii:
-        # 把保存根目录改为 checkpoint 目录下的 predictions。
-        args.test_save_dir = os.path.join(snapshot_path, "predictions")
-        # 再按实验标识和 snapshot_name+'2' 建立更深的输出目录；末尾 2 是现有命名约定。
-        test_save_path = os.path.join(args.test_save_dir, args.exp, snapshot_name + '2')
-        # 创建输出目录；test_single_volume 会在其中写 PNG 和 NIfTI 文件。
-        os.makedirs(test_save_path, exist_ok=True)
+        # 本次完整评估的可视化产物直接写入唯一输出目录。
+        test_save_path = log_folder
     # 理论上的不保存分支；以当前参数定义无法通过命令行触发。
     else:
         # None 表示不提供保存路径，但 utils 中的逐切片叠加图代码也依赖路径，需注意当前实现耦合。

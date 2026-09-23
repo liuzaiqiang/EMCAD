@@ -67,6 +67,9 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
+        refinement_mode=getattr(args, "refinement_mode", "off"),
+        refinement_tile_size=getattr(args, "refinement_tile_size", 16),
+        refinement_tile_ratio=getattr(args, "refinement_tile_ratio", 0.25),
     )
 
 
