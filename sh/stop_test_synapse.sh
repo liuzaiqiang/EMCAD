@@ -12,7 +12,9 @@ set -euo pipefail
 # -o pipefail：管道命令中任何一个环节失败，整个管道都算失败；否则默认只看最后一个命令的返回值。
 # 这些设置能防止你因为参数没传、文件不存在、命令失败而误 kill 到不该 kill 的进程。
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 # 【当前代码校正说明】本文件仅给PROJECT_DIR赋值，没有执行cd，PID_FILE也没有使用该绝对路径。
 # 所以它实际从调用者当前工作目录读取RUN_ID.pid；若不在项目根运行，可能返回2，即使项目根中存在该文件。
 # ↑ 这一行的目的：获取“脚本所在目录”的绝对路径，并保存到 PROJECT_DIR 变量。
@@ -40,7 +42,8 @@ RUN_ID="${1:-}"
 # 这里不输出 echo 是你要求的“精简”，但退出码能让你在命令行通过 $? 判断错误原因。
 
 # 该PID_FILE是相对路径，并随调用者当前目录变化；PROJECT_DIR在当前版本中没有参与定位。
-PID_FILE="${RUN_ID}.pid"
+#PID_FILE="${RUN_ID}.pid"
+PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 # ↑ 这一行根据 run_id 拼出 pid 文件路径。
 # 你的启动脚本会生成：${RUN_ID}.pid，里面只存一个纯数字 PID。
 # 这样“run_id -> pid 文件 -> pid”形成了稳定映射：你只要记住 run_id，就能精确找到对应进程。

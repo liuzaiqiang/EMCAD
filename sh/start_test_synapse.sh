@@ -3,7 +3,10 @@
 set -euo pipefail
 
 # 将工作目录固定为脚本所在项目根，后续相对数据路径和PID文件不受调用位置影响。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 

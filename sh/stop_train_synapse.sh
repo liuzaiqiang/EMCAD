@@ -12,7 +12,10 @@ set -euo pipefail
 # -o pipefail：管道命令中任何一个环节失败，整个管道都算失败；否则默认只看最后一个命令的返回值。
 # 这些设置能防止你因为参数没传、文件不存在、命令失败而误 kill 到不该 kill 的进程。
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 # 【当前代码校正说明】这里只计算了PROJECT_DIR，后文没有执行cd，也没有把它拼入PID_FILE。
 # 因此本脚本实际会在“调用者当前工作目录”查找RUN_ID.pid；下方原有注释所说的跨目录稳定定位并未由当前代码实现。
 # ↑ 这一行的目的：获取“脚本所在目录”的绝对路径，并保存到 PROJECT_DIR 变量。
