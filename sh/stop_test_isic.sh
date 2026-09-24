@@ -3,7 +3,10 @@
 set -euo pipefail
 
 # 解析项目根并切换过去；随后又用PROJECT_DIR构造绝对PID路径，确保定位不依赖调用目录。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # 第一个位置参数优先级高于外部RUN_ID环境变量；二者都未提供时结果为空字符串。

@@ -3,7 +3,11 @@
 set -euo pipefail
 
 # 把脚本目录解析为项目根绝对路径并切换过去，保证从任意目录执行时路径含义一致。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # 创建集中日志目录；已有目录不会报错。

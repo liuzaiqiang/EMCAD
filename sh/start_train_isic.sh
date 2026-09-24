@@ -3,7 +3,11 @@
 set -euo pipefail
 
 # 固定项目根和工作目录，避免调用者所在目录影响相对路径。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # 训练stdout/stderr统一写入项目logs目录。

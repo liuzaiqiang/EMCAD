@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# Bash严格模式防止缺参数、坏路径或失败管道被静默忽略。
+# Bash严格模式确保参数准备和路径校验失败时不会继续启动测试。
 set -euo pipefail
 
-# 获取项目根绝对路径并切换过去，统一相对路径解析。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 切换到脚本所在项目根，使数据、日志和PID路径可预测。
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
-# conda和Python入口支持环境变量覆盖；conda初始化文件缺失时不激活环境。
+# conda/Python入口允许由外部环境变量覆盖；初始化脚本不存在时沿用当前环境。
 CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
 CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
@@ -19,16 +22,17 @@ if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
   conda activate "${CONDA_ENV_NAME}"
 fi
 
-# 限定GPU并使测试日志无缓冲写出。
+# 选择GPU并关闭Python标准流缓冲。
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 export PYTHONUNBUFFERED=1
 
-# 选择ISIC版本和val/test划分。
-DATASET="ISIC"
-DATASET_NAME="${DATASET_NAME:-ISIC2018}"
+# DATASET_NAME选择具体息肉数据集，SPLIT只允许val或test。
+DATASET="Polyp"
+DATASET_NAME="${DATASET_NAME:-ClinicDB}"
 SPLIT="${SPLIT:-test}"
 
-# 推理批量、工作进程、阈值、病例上限、可复现性和设备选择。
+# 推理尺寸、批量、DataLoader、二值阈值、病例上限、随机性和设备参数。
+IMG_SIZE="${IMG_SIZE:-352}"
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 THRESHOLD="${THRESHOLD:-0.5}"
@@ -37,20 +41,23 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 DEVICE="${DEVICE:-auto}"
 
-# CKPT必须显式提供；prepared数据位于DATA_ROOT/<ISIC版本>/<划分>。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/isic/target}"
+# 必须与检查点训练时架构一致的EMCAD配置；本脚本直接把这些值传给test_polyp.py。
+ENCODER="${ENCODER:-pvt_v2_b2}"
+EXPANSION_FACTOR="${EXPANSION_FACTOR:-2}"
+LGAG_KS="${LGAG_KS:-3}"
+ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
+
+# CKPT默认空，必须由调用者显式提供；DATA_ROOT指向prepared数据根。
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
 CKPT="${CKPT:-}"
 
-# 两个case块分别限定合法数据集和划分，非法输入统一退出1。
-case "${DATASET_NAME}" in
-  ISIC2017|ISIC2018)
-    ;;
-  *)
-    echo "[ERROR] DATASET_NAME must be ISIC2017 or ISIC2018"
-    exit 1
-    ;;
-esac
+# 数据集名只允许安全文件名字符，防止拼接出意外路径。
+[[ "${DATASET_NAME}" =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "[ERROR] invalid DATASET_NAME: ${DATASET_NAME}"
+  exit 1
+}
 
+# case块限制划分名；非法值以退出码1结束。
 case "${SPLIT}" in
   val|test)
     ;;
@@ -60,75 +67,69 @@ case "${SPLIT}" in
     ;;
 esac
 
-# 检查点为空或不存在时打印可直接参考的启动示例。
+# 检查点为空或文件不存在都会打印用法示例并退出1。
 if [[ -z "${CKPT}" || ! -f "${CKPT}" ]]; then
   echo "[ERROR] CKPT is missing or does not exist: ${CKPT}"
   echo "[ERROR] Example:"
-  echo "CKPT=/absolute/path/to/best.pth DATASET_NAME=ISIC2018 bash start_test_isic.sh"
+  echo "CKPT=/absolute/path/to/best.pth DATASET_NAME=ClinicDB bash start_test_polyp.sh"
   exit 1
 fi
 
-# 检查所选划分的图像和掩膜目录。
+# 验证所选划分的图像和掩膜目录存在。
 test -d "${DATA_ROOT}/${DATASET_NAME}/${SPLIT}/images" || {
-  echo "[ERROR] images directory not found:"
-  echo "${DATA_ROOT}/${DATASET_NAME}/${SPLIT}/images"
+  echo "[ERROR] images directory not found"
   exit 1
 }
 
 test -d "${DATA_ROOT}/${DATASET_NAME}/${SPLIT}/masks" || {
-  echo "[ERROR] masks directory not found:"
-  echo "${DATA_ROOT}/${DATASET_NAME}/${SPLIT}/masks"
+  echo "[ERROR] masks directory not found"
   exit 1
 }
 
-# 规范检查点绝对路径，并要求同目录config.json记录训练时模型配置。
+# 把检查点目录和文件名规范成绝对路径，避免后台进程受工作目录变化影响。
 CKPT_DIR="$(cd "$(dirname "${CKPT}")" && pwd)"
 CKPT="${CKPT_DIR}/$(basename "${CKPT}")"
-CONFIG_FILE="${CKPT_DIR}/config.json"
 
-# 缺少config.json时无法可靠重建训练架构，因此退出1。
-test -f "${CONFIG_FILE}" || {
-  echo "[ERROR] checkpoint config not found:"
-  echo "${CONFIG_FILE}"
-  exit 1
-}
-
-# 默认输出目录和CSV放在检查点目录旁，环境变量可覆盖。
+# 默认把预测、概率图和CSV写在检查点旁边，便于模型与结果一一对应。
 TEST_SAVE_DIR="${TEST_SAVE_DIR:-${CKPT_DIR}/${SPLIT}_${DATASET_NAME}_outputs}"
-OUTPUT_CSV="${OUTPUT_CSV:-${TEST_SAVE_DIR}/${SPLIT}_metrics.csv}"
+OUTPUT_CSV="${OUTPUT_CSV:-${TEST_SAVE_DIR}/test_metrics.csv}"
 
-# 生成唯一RUN_ID并建立日志/PID关联。
+# 时间戳和随机后缀生成唯一RUN_ID、日志名和PID文件。
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
-LOG_FILE="${LOG_DIR}/test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}.log"
+LOG_FILE="${LOG_DIR}/test_${DATASET}_${DATASET_NAME}_${SPLIT}__img${IMG_SIZE}_${TS}.log"
 RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
-# 将路径、阈值和RUN_ID追加到日志，方便复核本次评估配置。
+# 把实际解析后的路径写入日志；RUN_ID同时显示在终端。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATASET_NAME=${DATASET_NAME}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SPLIT=${SPLIT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATA_ROOT=${DATA_ROOT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] CKPT=${CKPT}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] CONFIG_FILE=${CONFIG_FILE}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] TEST_SAVE_DIR=${TEST_SAVE_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] OUTPUT_CSV=${OUTPUT_CSV}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] THRESHOLD=${THRESHOLD}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
 echo "---------------------------ready to test----------------------------------" | tee -a "${LOG_FILE}" > /dev/null
 
-# 整个续行块是一条nohup后台命令；模型结构由检查点旁config.json在test_isic.py中恢复。
-# 输出、错误、输入和RUN_ID的处理方式与其他启动器一致；--save_probabilities额外导出概率图。
-nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_isic.py \
+# 单个多行命令块：nohup+后台执行，RUN_ID注入进程环境，-u关闭Python缓冲。
+# --save_probabilities要求同时保存归一化概率图；stdout/stderr追加日志，stdin断开。
+nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_polyp.py \
   --checkpoint "${CKPT}" \
   --data_root "${DATA_ROOT}" \
   --dataset_name "${DATASET_NAME}" \
   --split "${SPLIT}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
+  --encoder "${ENCODER}" \
+  --kernel_sizes 1 3 5 \
+  --expansion_factor "${EXPANSION_FACTOR}" \
+  --lgag_ks "${LGAG_KS}" \
+  --activation_mscb "${ACTIVATION_MSCB}" \
+  --img_size "${IMG_SIZE}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
   --threshold "${THRESHOLD}" \
@@ -139,7 +140,7 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_isic.py \
   --save_probabilities \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
-# 获取后台PID、写PID文件并报告日志及结果目录。
+# 保存后台PID；stop_test_polyp.sh会核验PID文件和/proc中的RUN_ID后再发送信号。
 PID=$!
 
 echo "[INFO] PID=${PID}"

@@ -3,7 +3,11 @@
 set -euo pipefail
 
 # 取得当前脚本所在的项目根目录并切换过去，使数据、日志和辅助脚本的相对路径不受调用位置影响。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # 测试进程的标准输出和标准错误统一写入项目 logs 目录；-p 允许目录已存在。

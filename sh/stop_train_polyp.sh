@@ -3,7 +3,8 @@
 set -euo pipefail
 
 # 解析脚本所在项目根并切换过去，使相对命令上下文稳定；本文件的PID_FILE本身还使用绝对路径。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${PROJECT_DIR}"
 
 # RUN_ID优先取第一个位置参数；未传参数时再读取外部RUN_ID环境变量，二者都没有则得到空串。

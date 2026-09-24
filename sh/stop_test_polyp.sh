@@ -3,7 +3,11 @@
 set -euo pipefail
 
 # 固定到脚本所在项目根；PID_FILE还显式使用该绝对路径，因此可从任意目录调用本脚本。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
+
 cd "${PROJECT_DIR}"
 
 # 优先采用命令行第一个参数，缺省时采用环境变量RUN_ID；这两种方式都能指定待停止的测试任务。

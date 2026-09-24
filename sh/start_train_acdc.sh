@@ -17,7 +17,9 @@ conda activate "${CONDA_ENV_PREFIX}"
 
 
 # 解析脚本所在目录为项目绝对路径，并切换过去，使后续相对路径和PID文件位置稳定。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 cd "${PROJECT_DIR}"
 
 

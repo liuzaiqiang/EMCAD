@@ -3,7 +3,11 @@
 set -euo pipefail
 
 # 获取脚本所在项目根并进入该目录；相对PID_FILE因而稳定解析到项目根。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # RUN_ID先取命令行第一个参数，缺省时再从调用环境读取同名变量。

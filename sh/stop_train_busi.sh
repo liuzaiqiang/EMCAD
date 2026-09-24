@@ -3,7 +3,10 @@
 set -euo pipefail
 
 # 定位并进入项目根目录；绝对PID_FILE路径进一步保证从其他目录调用时仍指向本项目。
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+
 cd "${PROJECT_DIR}"
 
 # 待停止任务的RUN_ID优先取第一个参数，未传时回退到调用环境中的RUN_ID变量。
