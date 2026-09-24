@@ -74,6 +74,14 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
 parser.add_argument('--supervision', type=str, default='mutation',
                     help='loss supervision: mutation, deep_supervision or last_layer')
+# 候选方法的唯一结构开关；默认 p1 保持旧 EMCAD baseline。
+parser.add_argument('--fusion_mode', type=str, default='p1',
+                    choices=['p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'],
+                    help='EMCAD output readout: p1 baseline, fixed sum, four global scalars, or pixel reliability')
+parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
+                    help='weight of the fused-output CE+Dice auxiliary loss; keep 0 for the original baseline')
+parser.add_argument('--reliability_loss_weight', type=float, default=1.0,
+                    help='pixel reliability BCE weight used only by pixel_reliability')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -205,8 +213,14 @@ if __name__ == "__main__":
 
     # 简化后的snapshot_path Windows/Linux 通用
     # exp_name = f"run_seed{args.seed}"
-    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
+    # 修复实验协议路径：原实现误把片段写成 tuple，os.path.join 会直接抛 TypeError。
+    exp_name = os.path.join(
+        f"{args.dataset}", f"encoder_{args.encoder}", f"img_size_{args.img_size}",
+        f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
+        f"maxEpochs_{args.max_epochs}")
     snapshot_path = os.path.join("model_pth", exp_name)
+    if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
+        snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
@@ -216,7 +230,8 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     fusion_mode=args.fusion_mode)
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

@@ -258,6 +258,13 @@ def trainer_synapse(args, model, snapshot_path):
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
+
+            # 候选融合模式的显式训练项；fusion_loss_weight=0 时 baseline 路径完全不变。
+            fusion_model = model.module if hasattr(model, 'module') else model
+            if getattr(args, 'fusion_loss_weight', 0.0) > 0 and getattr(fusion_model, 'fusion_mode', 'p1') != 'p1':
+                loss = loss + float(args.fusion_loss_weight) * fusion_model.fusion_auxiliary_loss(
+                    P, label_batch, ce_loss, dice_loss,
+                    reliability_loss_weight=getattr(args, 'reliability_loss_weight', 1.0))
             """
             用两个输出的极小例子模拟
             若只有 P=[P0,P1]，使用 mutation：

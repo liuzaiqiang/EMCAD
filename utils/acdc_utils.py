@@ -67,6 +67,7 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
+        fusion_mode=getattr(args, "fusion_mode", "p1"),
     )
 
 
@@ -220,7 +221,9 @@ def predict_volume(model, image, device, img_size, batch_size=8):
                     align_corners=False,
                 )
             # 统一模型输出为列表并选最后的最终分割 logits。
-            logits = model_outputs(model, batch, mode="test")[-1]
+            outputs = model_outputs(model, batch, mode="test")
+            base_model = model.module if hasattr(model, "module") else model
+            logits = base_model.fuse_outputs(outputs) if hasattr(base_model, "fuse_outputs") else outputs[-1]
             # 如果模型最终输出仍不是原始体数据空间尺寸，则把连续 logits 缩回原尺寸。
             if logits.shape[-2:] != (height, width):
                 # 在 argmax 前插值 logits，避免对离散类别图做不合理的双线性插值。

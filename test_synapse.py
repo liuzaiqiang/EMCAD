@@ -89,6 +89,11 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 监督策略不参与测试前向，却参与 checkpoint 目录名，因此仍需匹配训练命令。
 parser.add_argument('--supervision', type=str,
                     default='mutation', help='loss supervision: mutation, deep_supervision or last_layer')
+parser.add_argument('--fusion_mode', type=str, default='p1',
+                    choices=['p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'],
+                    help='must match the training checkpoint fusion mode')
+parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
+                    help='must match the training output directory naming')
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -156,6 +161,9 @@ def inference(args, model, test_save_path=None):
                                       test_save_path=test_save_path, case=case_name, z_spacing=1, class_names=classes)
         # 把当前 [8,4] 指标矩阵加到跨病例累计值。
         metric_list += np.array(metric_i)
+        base_model = model.module if hasattr(model, 'module') else model
+        if i_batch == 0 and hasattr(base_model, 'fusion_weight_statistics'):
+            logging.info('fusion_weight_statistics=%s', base_model.fusion_weight_statistics())
         # 先沿类别维求当前病例的 4 项宏平均并写日志。
         logging.info('idx %d case %s mean_dice %f mean_hd95 %f, mean_jacard %f mean_asd %f' % (i_batch, case_name,
                                                                                                np.mean(metric_i,
@@ -314,6 +322,8 @@ if __name__ == "__main__":
 
     snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}",
                                  f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
+    if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
+        snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
 
 
 
@@ -321,7 +331,8 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     fusion_mode=args.fusion_mode)
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

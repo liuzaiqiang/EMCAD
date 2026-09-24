@@ -469,6 +469,14 @@ def calculate_dice_percase(pred, gt):
 # net.eval() 在每张切片循环内重复调用，语义正确但有少量额外开销；
 # 三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
 # 这些历史行为，只在注释中把它们标明，便于你沿调用链排查问题。
+def select_fused_output(net, outputs):
+    """Select the configured EMCAD readout while preserving legacy p1 behavior."""
+    base_model = net.module if hasattr(net, 'module') else net
+    if hasattr(base_model, 'fuse_outputs'):
+        return base_model.fuse_outputs(outputs)
+    return outputs[-1]
+
+
 def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,  class_names=None):
     # DataLoader 增加了 batch 维；去掉 batch 后搬到 CPU、断开计算图并转为 NumPy。
     # 评估函数不需要继续建立 autograd 图；detach() 解除历史计算图引用，cpu() 让后面的 NumPy、SciPy 和 SimpleITK 接口可以使用。若传入的是 [D,H,W] 而不是[1,D,H,W]，squeeze(0) 仍可能误删深度维，调用方必须保持约定的 batch 形状。
@@ -529,7 +537,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # EMCAD 的训练/推理接口返回多个尺度或多个解码头；这里选择列表最后
                 # 一个作为最终结果，而不是把所有输出平均。训练时的深监督仍可能使用
                 # 全部输出，但本测试函数只使用最终头。
-                outputs = P[-1]
+                outputs = select_fused_output(net, P)
                 # 先在类别维 softmax，再 argmax 得到每像素类别索引，并去掉 batch 维。
                 # softmax 把 logits 变成概率，argmax 再选概率最大的类别；由于只需要
                 # 离散标签而不需要概率值，最后得到 [H,W] 的整数类别图。
@@ -610,7 +618,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
             # 获取模型多尺度输出。
             P = net(input)
             # 选择最终最高分辨率预测头。
-            outputs = P[-1]
+            outputs = select_fused_output(net, P)
             # softmax 后按类别取最大概率索引。
             out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
             # 去掉设备和计算图依赖，得到二维预测数组。
@@ -714,9 +722,7 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
                 # 原代码先建立浮点占位；下一行立即以最终输出覆盖。
                 # 这个占位对最终数值没有作用，只是历史代码遗留；真正使用的对象必须
                 # 是 P[-1]，否则后面的 softmax/argmax 无法得到网络输出。
-                outputs = 0.0
-                # 采用最高分辨率的最终预测头。
-                outputs = P[-1]
+                outputs = select_fused_output(net, P)
                 # 得到每像素类别索引。
                 out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
                 # 转为 NumPy。
@@ -752,7 +758,7 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
             # 获取多尺度输出。
             P = net(input)
             # 取最终头。
-            outputs = P[-1]
+            outputs = select_fused_output(net, P)
             # 转成类别图。
             out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
             # 搬回 CPU NumPy。

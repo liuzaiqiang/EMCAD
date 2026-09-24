@@ -81,6 +81,7 @@ def parse_args():
     parser.add_argument("--lgag_ks", type=int, default=3)
     # MSCB 激活函数。
     parser.add_argument("--activation_mscb", default="relu6")
+    parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
     # 出现该旗标表示关闭并行深度卷积。
     parser.add_argument("--no_dw_parallel", action="store_true")
     # 出现该旗标表示用 concat 聚合多尺度特征；默认 add。
@@ -260,6 +261,9 @@ def main():
             batch_size=args.inference_batch_size,
             # 输出 [D,H,W] int16 类别编号。
         )
+        base_model = model.module if hasattr(model, "module") else model
+        if case_index == 0 and hasattr(base_model, "fusion_weight_statistics"):
+            logging.info("fusion_weight_statistics=%s", base_model.fusion_weight_statistics())
         # 对 RV/MYO/LV 分别计算 Dice、HD95、Jaccard、ASD。
         per_class = volume_metrics(
             # 预测类别体。
