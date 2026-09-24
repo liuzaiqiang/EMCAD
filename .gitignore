@@ -45,8 +45,7 @@ lib/__pycache__
 .agents
 .codex_tmp
 
-*.pdf
-*.md
+
 
 
 venv/
