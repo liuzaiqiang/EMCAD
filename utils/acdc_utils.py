@@ -16,6 +16,13 @@ import torch.nn.functional as F
 # MedPy 提供 ACDC 的 Dice、HD95、Jaccard 和 ASSD 指标。
 from medpy import metric
 
+from utils.target_scale_supervision import (
+    build_target_scale_weights,
+    summarize_target_scale_batch,
+    weighted_cross_entropy,
+    weighted_dice_loss,
+)
+
 # 复用项目统一的编码器 + EMCAD 解码器封装。
 from lib.networks import EMCADNet
 
@@ -141,20 +148,53 @@ def _supervision_groups(output_count, supervision):
     raise ValueError("Unknown supervision: " + supervision)
 
 
+# 创新点：为现有 EMCAD 输出组合增加可关闭的目标尺度监督权重路径 时间：20260925
 # 按指定监督策略累计交叉熵与 Dice 混合损失。
-def supervised_loss(outputs, target, supervision, ce_loss, dice_loss):
+def supervised_loss(
+    outputs,
+    target,
+    supervision,
+    ce_loss,
+    dice_loss,
+    target_scale_mode="off",
+    target_scale_factors="area_boundary",
+    target_scale_small_threshold=0.05,
+    target_scale_large_threshold=0.20,
+    target_scale_boundary_reference=0.25,
+    epoch=0,
+    max_epochs=1,
+    return_stats=False,
+):
     # 在 target 所在设备创建标量浮点零，避免 CPU/CUDA 设备不一致。
     total = target.new_tensor(0.0, dtype=torch.float32)
-    # 遍历 last/deep/mutation 策略生成的每个输出组合。
-    for group in _supervision_groups(len(outputs), supervision):
-        # 将组合中的多尺度 logits 逐元素相加；各输出已由 EMCADNet 上采样到同一尺寸。
+    groups = _supervision_groups(len(outputs), supervision)
+    if target_scale_mode == "off":
+        # off 分支保留当前 EMCAD 的原始 CE+Dice 归约，确保 baseline 等价。
+        for group in groups:
+            logits = sum(outputs[index] for index in group)
+            total = total + 0.3 * ce_loss(logits, target.long())
+            total = total + 0.7 * dice_loss(logits, target)
+        return (total, None) if return_stats else total
+
+    head_weights, stats = build_target_scale_weights(
+        target,
+        mode=target_scale_mode,
+        factor_mode=target_scale_factors,
+        small_threshold=target_scale_small_threshold,
+        large_threshold=target_scale_large_threshold,
+        boundary_reference=target_scale_boundary_reference,
+        epoch=epoch,
+        max_epochs=max_epochs,
+        num_heads=len(outputs),
+    )
+    for group in groups:
         logits = sum(outputs[index] for index in group)
-        # 交叉熵权重 0.3，监督离散互斥类别。
-        total = total + 0.3 * ce_loss(logits, target.long())
-        # Dice 权重 0.7，直接优化区域重叠。
-        total = total + 0.7 * dice_loss(logits, target)
-    # 返回所有监督组合损失之和，原实现没有再除以组合数量。
-    return total
+        group_weights = head_weights[:, group].mean(dim=1)
+        total = total + 0.3 * weighted_cross_entropy(logits, target, group_weights)
+        total = total + 0.7 * weighted_dice_loss(
+            logits, target, group_weights, num_classes=outputs[0].shape[1]
+        )
+    return (total, summarize_target_scale_batch(stats, num_heads=len(outputs))) if return_stats else total
 
 
 # 兼容多种常见检查点包装格式并严格加载到模型。

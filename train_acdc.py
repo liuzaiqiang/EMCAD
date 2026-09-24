@@ -117,6 +117,13 @@ def parse_args():
         default="mutation",
         # 结束该参数定义。
     )
+    # 目标尺度课程监督候选方法；off 与当前 EMCAD baseline 完全一致。
+    parser.add_argument("--target_scale_mode",
+                        choices=["off", "static", "curriculum", "early_only", "late_only"], default="off")
+    parser.add_argument("--target_scale_factors", choices=["area", "area_boundary"], default="area_boundary")
+    parser.add_argument("--target_scale_small_threshold", type=float, default=0.05)
+    parser.add_argument("--target_scale_large_threshold", type=float, default=0.20)
+    parser.add_argument("--target_scale_boundary_reference", type=float, default=0.25)
     # 训练/推理切片目标尺寸，默认 224x224。
     parser.add_argument("--img_size", type=int, default=224)
     # DataLoader 每批二维切片数；当前默认 6 与论文 ACDC 的 12 不同。
@@ -306,8 +313,10 @@ def main():
         args.run_name = "acdc_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
     # 本次实验目录=<output_dir>/<run_name>。
     snapshot_path = os.path.join(args.output_dir, args.run_name)
-    # 递归创建目录；已存在时复用。
-    os.makedirs(snapshot_path, exist_ok=True)
+    # 每次正式实验必须使用独立目录，避免覆盖 checkpoint、CSV 和日志。
+    if os.path.exists(snapshot_path):
+        raise FileExistsError("Refusing to reuse existing experiment directory: {}".format(snapshot_path))
+    os.makedirs(snapshot_path, exist_ok=False)
 
     # 配置文件日志，写入本实验 train.log。
     logging.basicConfig(
@@ -325,6 +334,14 @@ def main():
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     # 保存全部参数的人类可读日志。
     logging.info("args=%s", args)
+    logging.info(
+        "target_scale mode=%s factors=%s small=%.6f large=%.6f boundary_reference=%.6f",
+        args.target_scale_mode,
+        args.target_scale_factors,
+        args.target_scale_small_threshold,
+        args.target_scale_large_threshold,
+        args.target_scale_boundary_reference,
+    )
     # 保存实际运行设备。
     logging.info("device=%s", device)
     # 以写模式创建 config.json；这里是可复现实验的重要配置快照。
@@ -414,6 +431,7 @@ def main():
         model.train()
         # 收集本 epoch 每个已处理 batch 的标量 loss，用于计算 epoch 均值。
         epoch_losses = []
+        target_scale_epoch_stats = []
         # 创建批次进度条，显示当前人类轮次 epoch+1/max_epochs。
         progress = tqdm(trainloader, desc="epoch {}/{}".format(epoch + 1, args.max_epochs))
         # 逐批读取字典；sampled['image']=[B,1,H,W]，sampled['label']=[B,H,W]。
@@ -433,7 +451,7 @@ def main():
                 # EMCAD 训练前向并统一转成 list；典型 4 个输出均为 [B,4,224,224] logits。
                 outputs = model_outputs(model, images, mode="train")
                 # 按监督策略组合输出，每组计算 0.3*CE+0.7*Dice，再把所有组相加。
-                loss = supervised_loss(
+                loss, batch_target_scale_stats = supervised_loss(
                     # 四级 logits 列表。
                     outputs,
                     # 整数像素标签。
@@ -444,8 +462,18 @@ def main():
                     ce_loss=ce_loss,
                     # 已构造的 4 类 DiceLoss 对象。
                     dice_loss=dice_loss,
+                    target_scale_mode=args.target_scale_mode,
+                    target_scale_factors=args.target_scale_factors,
+                    target_scale_small_threshold=args.target_scale_small_threshold,
+                    target_scale_large_threshold=args.target_scale_large_threshold,
+                    target_scale_boundary_reference=args.target_scale_boundary_reference,
+                    epoch=epoch,
+                    max_epochs=args.max_epochs,
+                    return_stats=True,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
+            if batch_target_scale_stats is not None:
+                target_scale_epoch_stats.append(batch_target_scale_stats)
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。
@@ -471,6 +499,30 @@ def main():
         mean_loss = float(np.mean(epoch_losses))
         # 写入文本日志，epoch+1 使用一基轮次。
         logging.info("epoch=%d train_loss=%.6f", epoch + 1, mean_loss)
+        if target_scale_epoch_stats:
+            bucket_counts = np.sum(
+                np.asarray([item["bucket_counts"] for item in target_scale_epoch_stats]), axis=0
+            ).astype(int).tolist()
+            head_weight_mean = np.mean(
+                np.asarray([item["head_weight_mean"] for item in target_scale_epoch_stats]), axis=0
+            ).tolist()
+            logging.info(
+                "target_scale epoch=%d strength=%.6f buckets(empty,small,medium,large)=%s "
+                "head_weight_mean(P4,P3,P2,P1)=%s weight_min=%.6f weight_max=%.6f",
+                epoch + 1,
+                target_scale_epoch_stats[-1]["curriculum_strength"],
+                bucket_counts,
+                [round(value, 6) for value in head_weight_mean],
+                min(item["head_weight_min"] for item in target_scale_epoch_stats),
+                max(item["head_weight_max"] for item in target_scale_epoch_stats),
+            )
+            for head_index, value in enumerate(head_weight_mean):
+                writer.add_scalar("target_scale/head_weight_{}".format(head_index), value, epoch + 1)
+            writer.add_scalar(
+                "target_scale/curriculum_strength",
+                target_scale_epoch_stats[-1]["curriculum_strength"],
+                epoch + 1,
+            )
         # 写入 TensorBoard epoch 级 loss 曲线。
         writer.add_scalar("train/epoch_loss", mean_loss, epoch + 1)
         # 每轮覆盖 last.pth，始终代表最新完成 epoch 的裸模型参数。

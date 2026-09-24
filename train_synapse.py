@@ -9,6 +9,7 @@
 
 # argparse 负责把命令行参数（例如 --batch_size 6）转换为 args 对象。
 import argparse
+import json
 # datetime 用于输出当前训练入口启动到模型创建完成时的系统时间。
 from datetime import datetime
 # logging 在本入口中虽被导入，但实际日志配置位于 trainer.py；这是保留的工程导入。
@@ -74,6 +75,18 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
 parser.add_argument('--supervision', type=str, default='mutation',
                     help='loss supervision: mutation, deep_supervision or last_layer')
+# 目标尺度课程监督候选方法；off 必须与原 EMCAD baseline 的监督完全一致。
+parser.add_argument('--target_scale_mode', type=str,
+                    choices=['off', 'static', 'curriculum', 'early_only', 'late_only'], default='off',
+                    help='target-scale supervision schedule')
+parser.add_argument('--target_scale_factors', type=str, choices=['area', 'area_boundary'], default='area_boundary',
+                    help='GT scale factors used by target-scale supervision')
+parser.add_argument('--target_scale_small_threshold', type=float, default=0.05,
+                    help='foreground area ratio below which a sample is small')
+parser.add_argument('--target_scale_large_threshold', type=float, default=0.20,
+                    help='foreground area ratio at or above which a sample is large')
+parser.add_argument('--target_scale_boundary_reference', type=float, default=0.25,
+                    help='boundary complexity ratio at which boundary modulation saturates')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -90,6 +103,10 @@ parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
+parser.add_argument('--output_dir', type=str, default='./model_pth/Synapse/target_scale_runs',
+                    help='isolated directory for target-scale and paired baseline runs')
+parser.add_argument('--run_name', type=str, default=None,
+                    help='unique experiment name; existing directories are rejected')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
 
@@ -205,11 +222,15 @@ if __name__ == "__main__":
 
     # 简化后的snapshot_path Windows/Linux 通用
     # exp_name = f"run_seed{args.seed}"
-    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
-    snapshot_path = os.path.join("model_pth", exp_name)
-
-    if not os.path.exists(snapshot_path):
-        os.makedirs(snapshot_path)
+    exp_name = "{}_encoder_{}_imgSize{}_seed{}_batchSize{}_lr{}_maxEpochs{}_targetScale_{}_{}".format(
+        args.dataset, args.encoder, args.img_size, args.seed, args.batch_size,
+        args.base_lr, args.max_epochs, args.target_scale_mode, args.target_scale_factors
+    )
+    run_name = args.run_name or "{}_{}".format(exp_name, datetime.now().strftime('%Y%m%d_%H%M%S_%f'))
+    snapshot_path = os.path.join(args.output_dir, run_name)
+    os.makedirs(snapshot_path, exist_ok=False)
+    with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
+        json.dump(vars(args), stream, ensure_ascii=False, indent=2)
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。

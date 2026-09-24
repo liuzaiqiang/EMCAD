@@ -5,11 +5,12 @@
 # 对 8 个前景器官分别计算 Dice、HD95、Jaccard、ASD，并可保存 NIfTI/叠加图。
 # 论文对应：模型结构见第 3.2 节与图 2；Synapse 结果见第 4.2.2 节相关表格；
 # 数据集与指标定义见补充材料第 7.1、7.2 节。本文件中的目录命名、PNG/NIfTI 输出、
-# best.pth 不存在时回退到最后 epoch 等，属于仓库工程实现，不是模型结构本身。
+# 测试必须显式接收冻结后的 best.pth；不会按测试指标或旧目录规则替换 checkpoint。
 # ========================================================================
 
 # argparse 解析测试路径、网络结构和保存选项。
 import argparse
+import csv
 # logging 将逐病例与逐类别指标写入文件并同步输出到终端。
 import logging
 # os 负责 checkpoint、日志和预测目录的拼接/创建。
@@ -35,6 +36,7 @@ from tqdm import tqdm
 from utils.dataset_synapse import Synapse_dataset
 # test_single_volume 负责逐切片前向、恢复尺寸、计算 4 项指标并按需保存结果。
 from utils.utils import test_single_volume
+from utils.target_scale_supervision import target_scale_bucket_numpy
 
 # EMCADNet 必须用与训练 checkpoint 一致的结构参数重新实例化。
 from lib.networks import EMCADNet
@@ -111,6 +113,14 @@ parser.add_argument('--test_save_dir', type=str, default='predictions', help='sa
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 固定 Python、NumPy、PyTorch 和 CUDA 随机状态。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
+parser.add_argument('--checkpoint', type=str, required=True,
+                    help='explicit best.pth path selected under the frozen checkpoint rule')
+parser.add_argument('--output_dir', type=str, default=None,
+                    help='independent output directory for this evaluation')
+parser.add_argument('--target_scale_small_threshold', type=float, default=0.05,
+                    help='same GT area threshold used during target-scale training')
+parser.add_argument('--target_scale_large_threshold', type=float, default=0.20,
+                    help='same GT area threshold used during target-scale training')
 # 解析命令行并生成全局 args。
 args = parser.parse_args()
 
@@ -142,6 +152,7 @@ def inference(args, model, test_save_path=None):
     model.eval()
     # 第一次加 NumPy 数组后，metric_list 会成为 [8,4]：8 类 x 4 指标。
     metric_list = 0.0
+    target_scale_rows = []
     # 逐病例迭代；tqdm 包装 enumerate 显示测试进度。
     for i_batch, sampled_batch in tqdm(enumerate(testloader)):
         # 取得病例张量最后两个空间维；h、w 后续未使用，属于保留调试变量。
@@ -154,6 +165,19 @@ def inference(args, model, test_save_path=None):
                                       patch_size=[args.img_size, args.img_size],
                                       # z_spacing=1 用于保存体数据间距；class_names 用于叠加图图例和日志语义。
                                       test_save_path=test_save_path, case=case_name, z_spacing=1, class_names=classes)
+        scale_stats = target_scale_bucket_numpy(
+            np.asarray(label[0] if getattr(label, "ndim", 0) == 4 else label),
+            small_threshold=args.target_scale_small_threshold,
+            large_threshold=args.target_scale_large_threshold,
+        )
+        case_dice = np.asarray(metric_i, dtype=float)[:, 0]
+        target_scale_rows.append({
+            "case_name": case_name,
+            **scale_stats,
+            **{"{}_dice".format(name.replace(" ", "_")): float(value)
+               for name, value in zip(classes, case_dice)},
+            "mean_dice": float(case_dice.mean()),
+        })
         # 把当前 [8,4] 指标矩阵加到跨病例累计值。
         metric_list += np.array(metric_i)
         # 先沿类别维求当前病例的 4 项宏平均并写日志。
@@ -192,6 +216,41 @@ def inference(args, model, test_save_path=None):
     logging.info(
         'Testing performance in best val model: mean_dice : %f mean_hd95 : %f, mean_jacard : %f mean_asd : %f' % (
             performance, mean_hd95, mean_jacard, mean_asd))
+    if test_save_path is not None and target_scale_rows:
+        stats_path = os.path.join(test_save_path, "target_scale_test_metrics.csv")
+        if os.path.exists(stats_path):
+            raise FileExistsError("Refusing to overwrite existing target-scale CSV: {}".format(stats_path))
+        with open(stats_path, "w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=["case_name", "bucket", "area_ratio", "boundary_complexity"]
+                + ["{}_dice".format(name.replace(" ", "_")) for name in classes]
+                + ["mean_dice"],
+            )
+            writer.writeheader()
+            writer.writerows(target_scale_rows)
+        bucket_path = os.path.join(test_save_path, "target_scale_bucket_summary.csv")
+        if os.path.exists(bucket_path):
+            raise FileExistsError("Refusing to overwrite existing bucket summary: {}".format(bucket_path))
+        bucket_rows = []
+        for bucket_name in ("empty", "small", "medium", "large"):
+            selected = [row for row in target_scale_rows if row["bucket"] == bucket_name]
+            if not selected:
+                continue
+            bucket_rows.append({
+                "bucket": bucket_name,
+                "n_cases": len(selected),
+                "mean_dice": float(np.mean([row["mean_dice"] for row in selected])),
+                "area_ratio_mean": float(np.mean([row["area_ratio"] for row in selected])),
+                "boundary_complexity_mean": float(np.mean([row["boundary_complexity"] for row in selected])),
+            })
+        with open(bucket_path, "w", newline="", encoding="utf-8") as stream:
+            writer = csv.DictWriter(
+                stream,
+                fieldnames=["bucket", "n_cases", "mean_dice", "area_ratio_mean", "boundary_complexity_mean"],
+            )
+            writer.writeheader()
+            writer.writerows(bucket_rows)
     # 函数只返回状态字符串，真正数值保存在日志中。
     return "Testing Finished!"
 
@@ -329,22 +388,26 @@ if __name__ == "__main__":
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
 
     # 首选加载训练过程中按验证Dice选择的 best.pth。
-    snapshot = os.path.join(snapshot_path, 'best.pth')
+    snapshot = args.checkpoint
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
     print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)
-    # 若 best.pth 不存在，则回退到零基编号的最后 epoch 文件，例如 epoch_299.pth。
-    if not os.path.exists(snapshot): snapshot = snapshot.replace('best', 'epoch_' + str(args.max_epochs - 1))
+    # 显式 checkpoint 不存在时立即停止，避免按测试指标或旧目录规则偷偷换权重。
+    if not os.path.exists(snapshot):
+        raise FileNotFoundError("Explicit checkpoint does not exist: {}".format(snapshot))
     # torch.load 读取 state_dict，load_state_dict 默认 strict=True；没有 map_location，要求当前 CUDA 环境兼容。
     model.load_state_dict(torch.load(snapshot))
     # 以正斜杠切分路径得到内层目录名；在纯 Windows 反斜杠路径上此写法需要留意。
-    snapshot_name = snapshot_path.split('/')[-1]
+    snapshot_name = os.path.basename(os.path.dirname(os.path.abspath(snapshot)))
 
     # 测试日志按实验标识放入 test_log/test_log_<exp>。
-    log_folder = 'test_log/test_log_' + args.exp
+    log_folder = args.output_dir or ('test_log/test_log_' + args.exp)
     # 递归创建日志目录，存在时不报错。
     os.makedirs(log_folder, exist_ok=True)
     # 文件名取 snapshot_name；配置时间格式与训练日志一致。
-    logging.basicConfig(filename=log_folder + '/' + snapshot_name + ".txt", level=logging.INFO,
+    log_path = os.path.join(log_folder, snapshot_name + ".txt")
+    if os.path.exists(log_path):
+        raise FileExistsError("Refusing to overwrite existing test log: {}".format(log_path))
+    logging.basicConfig(filename=log_path, level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
     # 同时把日志输出到控制台。
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
@@ -356,9 +419,11 @@ if __name__ == "__main__":
     # 当前 is_savenii 因 default=True 实际总会进入该分支。
     if args.is_savenii:
         # 把保存根目录改为 checkpoint 目录下的 predictions。
-        args.test_save_dir = os.path.join(snapshot_path, "predictions")
+        args.test_save_dir = args.output_dir or os.path.join(os.path.dirname(snapshot), "predictions")
         # 再按实验标识和 snapshot_name+'2' 建立更深的输出目录；末尾 2 是现有命名约定。
         test_save_path = os.path.join(args.test_save_dir, args.exp, snapshot_name + '2')
+        if os.path.exists(test_save_path) and os.listdir(test_save_path):
+            raise FileExistsError("Refusing to overwrite existing predictions: {}".format(test_save_path))
         # 创建输出目录；test_single_volume 会在其中写 PNG 和 NIfTI 文件。
         os.makedirs(test_save_path, exist_ok=True)
     # 理论上的不保存分支；以当前参数定义无法通过命令行触发。

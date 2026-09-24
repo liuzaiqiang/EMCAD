@@ -52,6 +52,7 @@ from utils.acdc_utils import (
     # 对每个前景类别计算四项三维指标。
     volume_metrics,
 )
+from utils.target_scale_supervision import target_scale_bucket_numpy
 # ACDCVolumeDataset 的 test 分支读取完整 [D,H,W] NPZ 病例。
 from utils.dataset_ACDC import ACDCVolumeDataset
 
@@ -102,6 +103,8 @@ def parse_args():
     parser.add_argument("--device", default="auto")
     # 正数时只测前 N 个病例用于 smoke test；0 表示全部。
     parser.add_argument("--max_cases", type=int, default=0)
+    parser.add_argument("--target_scale_small_threshold", type=float, default=0.05)
+    parser.add_argument("--target_scale_large_threshold", type=float, default=0.20)
     # 出现后保存每例原图/预测/标签 NIfTI。
     parser.add_argument("--save_nii", action="store_true")
     # 出现后把离散预测类别图保存为压缩 NPZ。
@@ -123,7 +126,7 @@ def resolve_device(requested):
 # 将 rows 写入 CSV。输入 rows 的最后一行通常是 case_name='MEAN' 的总体汇总。
 def write_csv(path, rows):
     # 第一列总是病例名。
-    fieldnames = ["case_name"]
+    fieldnames = ["case_name", "bucket", "area_ratio", "boundary_complexity"]
     # 依次为 RV、MYO、LV 构造四项指标列。
     for class_name in ACDC_CLASS_NAMES:
         # extend 接收生成器，产生 RV_dice、RV_hd95...等列名。
@@ -184,6 +187,10 @@ def main():
     output_dir = args.output_dir or os.path.join(checkpoint_dir, "predictions")
     # 未指定 output_csv 时在实验目录根部写 test_metrics.csv。
     output_csv = args.output_csv or os.path.join(checkpoint_dir, "test_metrics.csv")
+    if os.path.exists(output_csv):
+        raise FileExistsError("Refusing to overwrite existing test CSV: {}".format(output_csv))
+    if os.path.exists(output_dir) and os.listdir(output_dir):
+        raise FileExistsError("Refusing to overwrite existing test output directory: {}".format(output_dir))
     # 创建预测/日志目录。
     os.makedirs(output_dir, exist_ok=True)
     # 创建 CSV 父目录；abspath 保证即使只给文件名也能得到有效目录。
@@ -274,8 +281,14 @@ def main():
         )
         # 对三个前景类逐指标做宏平均，返回四项指标字典。
         means = mean_metrics(per_class)
+        scale_stats = target_scale_bucket_numpy(
+            label,
+            small_threshold=args.target_scale_small_threshold,
+            large_threshold=args.target_scale_large_threshold,
+        )
         # 当前 CSV 行先写病例名。
         row = {"case_name": case_name}
+        row.update(scale_stats)
         # enumerate(...,start=1) 保证 RV/MYO/LV 分别映射标签 1/2/3。
         for class_index, class_name in enumerate(ACDC_CLASS_NAMES, start=1):
             # 遍历四项指标。
@@ -367,6 +380,28 @@ def main():
     rows.append(summary)
     # 写出 CSV。
     write_csv(output_csv, rows)
+    bucket_csv = os.path.join(os.path.dirname(os.path.abspath(output_csv)), "target_scale_bucket_summary.csv")
+    if os.path.exists(bucket_csv):
+        raise FileExistsError("Refusing to overwrite existing bucket summary: {}".format(bucket_csv))
+    bucket_rows = []
+    for bucket_name in ("empty", "small", "medium", "large"):
+        selected = [row for row in rows[:-1] if row["bucket"] == bucket_name]
+        if not selected:
+            continue
+        bucket_rows.append({
+            "bucket": bucket_name,
+            "n_cases": len(selected),
+            "mean_dice": float(np.mean([row["mean_dice"] for row in selected])),
+            "area_ratio_mean": float(np.mean([row["area_ratio"] for row in selected])),
+            "boundary_complexity_mean": float(np.mean([row["boundary_complexity"] for row in selected])),
+        })
+    with open(bucket_csv, "w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=["bucket", "n_cases", "mean_dice", "area_ratio_mean", "boundary_complexity_mean"],
+        )
+        writer.writeheader()
+        writer.writerows(bucket_rows)
 
     # 打印终端表头。
     print("class       Dice       HD95       Jaccard       ASD")

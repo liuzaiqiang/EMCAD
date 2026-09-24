@@ -47,6 +47,12 @@ from torch.cuda.amp import GradScaler, autocast
 from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
+from utils.target_scale_supervision import (
+    build_target_scale_weights,
+    summarize_target_scale_batch,
+    weighted_cross_entropy,
+    weighted_dice_loss,
+)
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
@@ -112,6 +118,19 @@ def trainer_synapse(args, model, snapshot_path):
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     # 把全部命令行配置写入日志，这是复现实验时最基本的配置快照。
     logging.info(str(args))
+    target_scale_mode = getattr(args, "target_scale_mode", "off")
+    target_scale_factor_mode = getattr(args, "target_scale_factors", "area_boundary")
+    target_scale_small_threshold = getattr(args, "target_scale_small_threshold", 0.05)
+    target_scale_large_threshold = getattr(args, "target_scale_large_threshold", 0.20)
+    target_scale_boundary_reference = getattr(args, "target_scale_boundary_reference", 0.25)
+    logging.info(
+        "target_scale mode=%s factors=%s small=%.6f large=%.6f boundary_reference=%.6f",
+        target_scale_mode,
+        target_scale_factor_mode,
+        target_scale_small_threshold,
+        target_scale_large_threshold,
+        target_scale_boundary_reference,
+    )
     # 缓存基础学习率，后面创建优化器并在每次迭代写回参数组。
     base_lr = args.base_lr
     # 缓存类别总数；9 包含背景，将用于构造多类 DiceLoss。
@@ -189,6 +208,7 @@ def trainer_synapse(args, model, snapshot_path):
     for epoch_num in iterator:
         # 每个 epoch 开始前确保模型处于训练模式  2026-08-31 16:45新增
         model.train()
+        target_scale_epoch_stats = []
         # 内层循环逐批读取字典；i_batch 是当前 epoch 内的 batch 序号。
         for i_batch, sampled_batch in enumerate(trainloader):
             # DataLoader 堆叠后，image_batch 通常 [B,1,224,224]，label_batch 通常 [B,224,224]。
@@ -238,7 +258,7 @@ def trainer_synapse(args, model, snapshot_path):
             # 每个监督组内部采用 30% 交叉熵 + 70% Dice，与论文第 4.1 节一致。
             w_ce, w_dice = 0.3, 0.7
             # 遍历监督组合；mutation 为 16 次循环，其中空集不产生损失。s 是当前组合的索引列表。例如 mutation 中可能是 [0]、[1,3] 或 [0,1,2,3]。
-            for s in ss:
+            for s in (ss if target_scale_mode == "off" else []):
                 # 当前组合的聚合 logits 初始化为 0；加上第一个输出后成为 [B,9,H,W] Tensor。
                 iout = 0.0
                 # 空集合没有可监督输出，直接进入下一组合。空集没有任何输出可相加。如果不跳过，iout 会保持普通数字 0.0，既没有预测形状，也没有梯度关系，不能送入损失函数。这里的 continue 只跳过当前组合，不会跳过整个 batch。
@@ -258,6 +278,32 @@ def trainer_synapse(args, model, snapshot_path):
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
+            if target_scale_mode != "off":
+                # 候选方法只替换监督权重；EMCAD 的输出和、监督组合及 CE/Dice 比例不变。
+                head_weights, batch_stats = build_target_scale_weights(
+                    label_batch,
+                    mode=target_scale_mode,
+                    factor_mode=target_scale_factor_mode,
+                    small_threshold=target_scale_small_threshold,
+                    large_threshold=target_scale_large_threshold,
+                    boundary_reference=target_scale_boundary_reference,
+                    epoch=epoch_num,
+                    max_epochs=max_epoch,
+                    num_heads=len(P),
+                )
+                loss = 0.0
+                for s in ss:
+                    if s == []:
+                        continue
+                    iout = sum(P[index] for index in s)
+                    group_weights = head_weights[:, s].mean(dim=1)
+                    loss += 0.3 * weighted_cross_entropy(iout, label_batch, group_weights)
+                    loss += 0.7 * weighted_dice_loss(
+                        iout, label_batch, group_weights, num_classes=num_classes
+                    )
+                target_scale_epoch_stats.append(
+                    summarize_target_scale_batch(batch_stats, num_heads=len(P))
+                )
             """
             用两个输出的极小例子模拟
             若只有 P=[P0,P1]，使用 mutation：
@@ -314,6 +360,30 @@ def trainer_synapse(args, model, snapshot_path):
 
         logging.info('iteration %d, epoch %d : loss : %f, lr: %f' %
                      (iter_num, epoch_num, loss.item(), lr_))
+        if target_scale_epoch_stats:
+            bucket_counts = np.sum(
+                np.asarray([item["bucket_counts"] for item in target_scale_epoch_stats]), axis=0
+            ).astype(int).tolist()
+            head_weight_mean = np.mean(
+                np.asarray([item["head_weight_mean"] for item in target_scale_epoch_stats]), axis=0
+            ).tolist()
+            logging.info(
+                "target_scale epoch=%d strength=%.6f buckets(empty,small,medium,large)=%s "
+                "head_weight_mean(P4,P3,P2,P1)=%s weight_min=%.6f weight_max=%.6f",
+                epoch_num + 1,
+                target_scale_epoch_stats[-1]["curriculum_strength"],
+                bucket_counts,
+                [round(value, 6) for value in head_weight_mean],
+                min(item["head_weight_min"] for item in target_scale_epoch_stats),
+                max(item["head_weight_max"] for item in target_scale_epoch_stats),
+            )
+            for head_index, value in enumerate(head_weight_mean):
+                writer.add_scalar("target_scale/head_weight_{}".format(head_index), value, epoch_num + 1)
+            writer.add_scalar(
+                "target_scale/curriculum_strength",
+                target_scale_epoch_stats[-1]["curriculum_strength"],
+                epoch_num + 1,
+            )
 
         # 固定使用last.pth 文件名，所以每个 epoch 都覆盖为最新模型状态。注意，这一步只是拼接路径
         save_mode_path = os.path.join(snapshot_path, 'last.pth')
