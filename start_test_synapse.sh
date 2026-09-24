@@ -17,11 +17,16 @@ mkdir -p "${LOG_DIR}"
 #CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
 
 
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+# CONDA_BASE="/home/mlf/anaconda3"
+# CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+# source "${CONDA_BASE}/etc/profile.d/conda.sh"
+# conda activate "${CONDA_ENV_PREFIX}"
+
+
+CONDA_BASE="/base/mambaforge"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
-
 
 
 # 加载conda shell函数并激活环境；失败会因set -e终止。
@@ -49,9 +54,17 @@ TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录数据集和输入尺寸。
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
+BATCH_SIZE=16
+
+CKPT="./model_pth/Synapse/train_Synapse__imgSize224_supervisionmutation_batchSize16_seed2222_lr1e-4_epo400_2026-09-23_205844_RANDf9121cbe0238/best.pth"
+OUTPUT_DIR="./tests/Synapse_disagreement"
+REFINEMENT_MODE="disagreement"
+REFINEMENT_TILE_SIZE=16
+REFINEMENT_TILE_RATIO=0.25
+
 
 # RUN_ID会注入Python进程环境，PID文件位于已cd到的项目根目录。
-RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_${BATCH_SIZE}_seed${seed}_maxepochs_${MAX_EPOCHS}_${TS}_RAND${RAND}"
+RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_seed${SEED}_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 # tee -a把关键路径和运行标识写入日志，RUN_ID另行输出到终端供停止脚本使用。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
@@ -66,11 +79,16 @@ test -d "${VOLUME_PATH}" || { echo "[ERROR] VOLUME_PATH not found: ${VOLUME_PATH
 # 整个反斜杠块是一条测试命令：nohup抵抗终端断开，env写入RUN_ID供停止时核验进程身份。
 # stdout追加日志且stderr合并；末尾&转入后台。此脚本未显式写< /dev/null，stdin处理由nohup实现决定。
 nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
+  --checkpoint "${CKPT}" \
+  --output_dir "${OUTPUT_DIR}" \
   --volume_path "${VOLUME_PATH}" \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
   --list_dir "${LIST_PATH}" \
-   --seed "${SEED}" \
+  --refinement_mode "${REFINEMENT_MODE}" \
+  --refinement_tile_size "${REFINEMENT_TILE_SIZE}" \
+  --refinement_tile_ratio "${REFINEMENT_TILE_RATIO}" \
+  --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。
