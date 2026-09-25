@@ -16,6 +16,7 @@ conda activate "${CONDA_ENV_PREFIX}"
 
 
 #PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+#这条命令得到的是项目路径值，而不是sh/下的路径值
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
@@ -44,24 +45,13 @@ FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-0}"
 RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
 
 
-# 从系统随机源读取6字节并转为12位十六进制，避免同一秒启动多个任务时 RUN_ID 冲突。
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 TS="$(date +%F_%H%M%S)"
 LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}.log"
-RUN_ID="train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}"
-PID_FILE="${RUN_ID}.pid"
+RUN_ID="$(basename "${LOG_FILE}" .log)"
+PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
-# tee -a 先把运行参数追加到日志，随后 > /dev/null 抑制大多数参数在终端重复显示。
-# RUN_ID 单独再次输出到终端，便于复制给对应 stop 脚本。
-# echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null 
-# echo "[INFO] DATASET=${DATASET}"  | tee -a "${LOG_FILE}" > /dev/null
-# echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
-# echo "[INFO] LIST_DIR=${LIST_DIR}"  | tee -a "${LOG_FILE}" > /dev/null
-# echo "[INFO] SEED=${SEED}"  | tee -a "${LOG_FILE}" > /dev/null
-# echo "[INFO] RUN_ID=${RUN_ID}"  | tee -a "${LOG_FILE}" > /dev/null
-# echo "[INFO] RUN_ID=${RUN_ID}"
 
-#echo "---------------------------ready to train---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -113,8 +103,8 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
-# $! 是当前 shell 最近启动的后台进程PID，即 nohup/env/python 进程链最终跟踪的训练进程。
+
 PID=$!
 echo "[INFO] PID=${PID}"
-# PID文件只保存数字PID；与RUN_ID环境变量双重校验后，停止脚本才会发送终止信号。
+#PID 文件在项目根目录
 echo "${PID}" > "${PID_FILE}"
