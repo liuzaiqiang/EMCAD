@@ -20,7 +20,7 @@ import os
 import random
 # NumPy 用于设置其独立随机数生成器的种子。
 import numpy as np
-# torch 提供张量、随机种子、CUDA 与模型运行能力。
+# torch 提供张量、随机种子、CUDA 与模型运行能力。络难训练的问题：最终输出的梯度传到早期层时可能变弱，而中间层也未被直接要求学出有判别力的特征。做法是在中间层增加预测头和损失，让这些层更直接地收到训练信号。后来，分割网络把这一思路用于多个尺度的分割输出。
 import torch
 # nn 在本文件当前执行路径中未直接使用；模型类内部使用 torch.nn。
 import torch.nn as nn
