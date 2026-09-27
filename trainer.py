@@ -143,7 +143,9 @@ def trainer_synapse(args, model, snapshot_path):
         random.seed(args.seed + worker_id)
 
     # 构造训练批次：shuffle=True 每个epoch重排切片；pin_memory=True可加快CPU->GPU 拷贝。
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,
+    #trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True,
+                             num_workers=getattr(args, 'num_workers', 0), pin_memory=True,
                              worker_init_fn=worker_init_fn)
     # 下面两行原注释提示 Windows 多进程读取可能需要 num_workers=0；当前真正执行的是上面的 8。
     # windows下 num_workers需要改为0
