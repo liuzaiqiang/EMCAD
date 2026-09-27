@@ -87,6 +87,10 @@ def parse_args():
     parser.add_argument("--concatenation", action="store_true")
     # 预训练目录仍是 build_model 所需属性，但测试构造时 pretrain=False，不会加载它。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
+    # 必须与训练 checkpoint 使用相同的 CGCF 解码器模式和初始化超参数。
+    parser.add_argument("--cgcf_mode", choices=["off", "gate_only", "parallel_only", "cgcf"], default="off")
+    parser.add_argument("--cgcf_temperature", type=float, default=4.0)
+    parser.add_argument("--cgcf_threshold", type=float, default=0.5)
 
     # 每张切片进入模型前缩放到的正方形尺寸，须与训练设置相符。
     parser.add_argument("--img_size", type=int, default=224)

@@ -67,6 +67,9 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
+        cgcf_mode=getattr(args, "cgcf_mode", "off"),
+        cgcf_temperature=getattr(args, "cgcf_temperature", 4.0),
+        cgcf_threshold=getattr(args, "cgcf_threshold", 0.5),
     )
 
 

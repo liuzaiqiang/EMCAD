@@ -876,10 +876,63 @@ class SAB(nn.Module):
 #   EUCB 的核固定为 3、激活固定采用其默认 ReLU；CAB/LGAG 的激活也使用各类默认 ReLU；
 #   num_classes、encoder、pretrain 都不属于 EMCAD，由 lib/networks.py 管理。
 # ==================================================================================================
+class CorrelationGatedComplementaryFusion(nn.Module):
+    """
+    CGCF: use decoder/skip channel correlation to suppress only redundant skip content.
+
+    The module keeps the EMCAD additive interface. Both inputs and the output have
+    shape [B, C, H, W]. ``gate_only`` and ``parallel_only`` are mechanism ablations;
+    ``cgcf`` is the complete candidate method.
+    """
+
+    # 创新点：相关性门控的互补跳连融合算子。时间：20260927
+    def __init__(self, mode='cgcf', init_temperature=4.0, init_threshold=0.5, eps=1e-6):
+        super(CorrelationGatedComplementaryFusion, self).__init__()
+        valid_modes = {'gate_only', 'parallel_only', 'cgcf'}
+        if mode not in valid_modes:
+            raise ValueError('Unknown CGCF mode: {}'.format(mode))
+        if float(init_temperature) <= 0.0:
+            raise ValueError('CGCF temperature must be positive')
+        self.mode = mode
+        # 两个标量在 d3/d2/d1 三个尺度共享，避免把同一机制误报为三个模块。
+        self.log_temperature = nn.Parameter(torch.log(torch.tensor(float(init_temperature))))
+        self.threshold = nn.Parameter(torch.tensor(float(init_threshold)))
+        self.eps = float(eps)
+
+    # 创新点：在同尺度 decoder/skip 特征上计算相关性门控互补残差。时间：20260927
+    def forward(self, decoder_feature, gated_skip):
+        if decoder_feature.shape != gated_skip.shape:
+            raise RuntimeError(
+                'CGCF requires decoder_feature and gated_skip to have the same '
+                '[B, C, H, W] shape, but got {} and {}.'.format(
+                    tuple(decoder_feature.shape), tuple(gated_skip.shape)))
+
+        decoder_norm = decoder_feature * torch.rsqrt(
+            torch.sum(decoder_feature * decoder_feature, dim=1, keepdim=True) + self.eps)
+        if self.mode == 'parallel_only':
+            parallel_skip = (
+                torch.sum(gated_skip * decoder_norm, dim=1, keepdim=True) * decoder_norm)
+            complementary_skip = gated_skip - parallel_skip
+        else:
+            skip_norm = gated_skip * torch.rsqrt(
+                torch.sum(gated_skip * gated_skip, dim=1, keepdim=True) + self.eps)
+            cosine = torch.sum(decoder_norm * skip_norm, dim=1, keepdim=True)
+            temperature = torch.exp(self.log_temperature).clamp(max=8.0)
+            redundancy = torch.sigmoid(temperature * (cosine - self.threshold))
+            if self.mode == 'gate_only':
+                complementary_skip = gated_skip - redundancy * gated_skip
+            else:
+                parallel_skip = (
+                    torch.sum(gated_skip * decoder_norm, dim=1, keepdim=True) * decoder_norm)
+                complementary_skip = gated_skip - redundancy * parallel_skip
+        return decoder_feature + complementary_skip
+
+
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6'):
+                 add=True, lgag_ks=3, activation='relu6', cgcf_mode='off',
+                 cgcf_temperature=4.0, cgcf_threshold=0.5, cgcf_eps=1e-6):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -943,6 +996,18 @@ class EMCAD(nn.Module):
         # 同一个 Module 多次调用在 PyTorch 中是合法的：每次根据当前输入重新计算权重图，但学习参数是同一份。
         self.sab = SAB()
 
+        # CGCF 只替换三处 LGAG 后的 d + x；不开启时不创建新增参数，保持 baseline 图完全不变。
+        self.cgcf_mode = str(cgcf_mode)
+        if self.cgcf_mode == 'off':
+            self.cgcf = None
+        else:
+            self.cgcf = CorrelationGatedComplementaryFusion(
+                mode=self.cgcf_mode,
+                init_temperature=cgcf_temperature,
+                init_threshold=cgcf_threshold,
+                eps=cgcf_eps,
+            )
+
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
     def forward(self, x, skips):
         # 本方法没有显式检查 len(skips)、通道或尺寸。若顺序误传为 [x1,x2,x3]，通常会在 LGAG 卷积
@@ -972,7 +1037,7 @@ class EMCAD(nn.Module):
         # Additive aggregation 3
         # 解码特征与筛选后的 skip 逐元素相加，不采用通道拼接，因此 d3 仍为 C3。
         # 相比 concat，相加不会把通道翻倍，也不需要额外卷积立即降维；代价是两路必须提前严格对齐 shape。
-        d3 = d3 + x3
+        d3 = self.cgcf(d3, x3) if self.cgcf is not None else d3 + x3
 
         # MSCAM3
         # 第三级通道注意力。
@@ -996,7 +1061,7 @@ class EMCAD(nn.Module):
         # Additive aggregation 2
         # 与门控 skip 相加，形状保持 (B,C2,H/8,W/8)。
         # 这一层重复 d3 的融合范式，使网络逐级把高层语义与更高分辨率边缘信息结合。
-        d2 = d2 + x2
+        d2 = self.cgcf(d2, x2) if self.cgcf is not None else d2 + x2
 
         # MSCAM2
         # 第二级通道注意力。
@@ -1018,7 +1083,7 @@ class EMCAD(nn.Module):
 
         # Additive aggregation 1
         # 相加后 d1 保持 (B,C1,H/4,W/4)。
-        d1 = d1 + x1
+        d1 = self.cgcf(d1, x1) if self.cgcf is not None else d1 + x1
 
         # MSCAM1
         # 第一级通道注意力。

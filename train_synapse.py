@@ -74,6 +74,14 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
 parser.add_argument('--supervision', type=str, default='mutation',
                     help='loss supervision: mutation, deep_supervision or last_layer')
+# CGCF 只作用于解码器中的 LGAG 后跳连融合；off 保持原始 EMCAD 的 d + x。
+parser.add_argument('--cgcf_mode', type=str, default='off',
+                    choices=['off', 'gate_only', 'parallel_only', 'cgcf'],
+                    help='decoder skip fusion: off, gate_only, parallel_only, or full cgcf')
+parser.add_argument('--cgcf_temperature', type=float, default=4.0,
+                    help='initial CGCF correlation gate temperature')
+parser.add_argument('--cgcf_threshold', type=float, default=0.5,
+                    help='initial CGCF correlation gate threshold')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -86,6 +94,8 @@ parser.add_argument('--base_lr', type=float, default=0.0001, help='segmentation 
 parser.add_argument('--img_size', type=int, default=224, help='input patch size of network input')
 # 期望使用的 GPU 数；大于 1 时 trainer.py 才尝试 nn.DataParallel。
 parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
+# Windows 使用多进程 DataLoader 需要额外的 spawn 处理；默认 0 便于本机先稳定启动，Linux 可显式调大。
+parser.add_argument('--num_workers', type=int, default=0, help='DataLoader workers; use 0 on Windows')
 # 1 表示确定性模式，0 表示允许 cuDNN benchmark 选择更快但可能不完全可复现的算法。
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
@@ -205,8 +215,15 @@ if __name__ == "__main__":
 
     # 简化后的snapshot_path Windows/Linux 通用
     # exp_name = f"run_seed{args.seed}"
-    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
+    # 修复实验协议路径：原实现误把路径片段写成 tuple，os.path.join 会直接抛 TypeError。
+    exp_name = os.path.join(
+        f"{args.dataset}", f"encoder_{args.encoder}", f"img_size_{args.img_size}",
+        f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
+        f"maxEpochs_{args.max_epochs}")
     snapshot_path = os.path.join("model_pth", exp_name)
+    if args.cgcf_mode != 'off':
+        snapshot_path += '_cgcf_{}_t{}_th{}'.format(
+            args.cgcf_mode, format(args.cgcf_temperature, 'g'), format(args.cgcf_threshold, 'g'))
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
@@ -216,7 +233,9 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     cgcf_mode=args.cgcf_mode, cgcf_temperature=args.cgcf_temperature,
+                     cgcf_threshold=args.cgcf_threshold)
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

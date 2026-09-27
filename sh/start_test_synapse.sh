@@ -16,12 +16,11 @@ mkdir -p "${LOG_DIR}"
 
 
 # Synapse测试脚本使用固定conda安装位置和环境名，不读取外部覆盖值。
-#CONDA_BASE="/base/mambaforge"
-#CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+CONDA_BASE="/base/mambaforge"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
 
-
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
 
@@ -53,6 +52,12 @@ RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录数据集和输入尺寸。
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 
+CGCF_MODE="${CGCF_MODE:-cgcf}"
+CGCF_TEMPERATURE="${CGCF_TEMPERATURE:-4.0}"
+CGCF_THRESHOLD="${CGCF_THRESHOLD:-0.5}"
+
+
+
 # RUN_ID会注入Python进程环境，PID文件位于已cd到的项目根目录。
 RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_${BATCH_SIZE}_seed${seed}_maxepochs_${MAX_EPOCHS}_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
@@ -74,6 +79,9 @@ nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
   --img_size "${IMG_SIZE}" \
   --list_dir "${LIST_PATH}" \
    --seed "${SEED}" \
+  --cgcf_mode "${CGCF_MODE}" \
+  --cgcf_temperature "${CGCF_TEMPERATURE}" \
+  --cgcf_threshold "${CGCF_THRESHOLD}" \
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。

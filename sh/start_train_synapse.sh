@@ -5,10 +5,10 @@
 set -euo pipefail
 
 
-# CONDA_BASE="/base/mambaforge"
-# CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+CONDA_BASE="/base/mambaforge"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
 
 
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
@@ -30,19 +30,24 @@ mkdir -p "${LOG_DIR}"
 export CUDA_VISIBLE_DEVICES=0
 
 
-SEED=2222
-MAX_EPOCHS=300
+SEED=8899
+MAX_EPOCHS=400
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
 SUPERVISION="mutation"
 BASE_LR=1e-4
 
+#windows环境下运行时，设置为0（0 表示由主进程加载数据，最稳定）;linux环境下运行时，设置为8。
+NUM_WORKERS=8
+CGCF_MODE="${CGCF_MODE:-cgcf}"
+CGCF_TEMPERATURE="${CGCF_TEMPERATURE:-4.0}"
+CGCF_THRESHOLD="${CGCF_THRESHOLD:-0.5}"
 
 
-FUSION_MODE="${FUSION_MODE:-p1}"
-FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-0}"
-RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+# FUSION_MODE="${FUSION_MODE:-p1}"
+# FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-0}"
+# RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
 
 
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -59,7 +64,6 @@ PARAM_NAMES=(
   PROJECT_DIR
   LOG_DIR
   CUDA_VISIBLE_DEVICES
-  PYTHONUNBUFFERED
   SEED
   MAX_EPOCHS
   DATASET
@@ -67,17 +71,15 @@ PARAM_NAMES=(
   BATCH_SIZE
   SUPERVISION
   BASE_LR
-  LIST_DIR
-  ROOT_PATH
-  VOLUME_PATH
-  FUSION_MODE
-  FUSION_LOSS_WEIGHT
-  RELIABILITY_LOSS_WEIGHT
   TS
   RAND
   LOG_FILE
   RUN_ID
   PID_FILE
+  CGCF_MODE
+  CGCF_TEMPERATURE
+  CGCF_THRESHOLD
+  NUM_WORKERS
 )
 
 {
@@ -97,10 +99,11 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
+  --num_workers "${NUM_WORKERS}" \
   --supervision "${SUPERVISION}" \
-  --fusion_mode "${FUSION_MODE}" \
-  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
-  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --cgcf_mode "${CGCF_MODE}" \
+  --cgcf_temperature "${CGCF_TEMPERATURE}" \
+  --cgcf_threshold "${CGCF_THRESHOLD}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

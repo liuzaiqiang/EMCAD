@@ -106,6 +106,10 @@ def parse_args():
     parser.add_argument("--no_pretrain", action="store_true")
     # PVT 预训练权重所在目录。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
+    # CGCF 只替换 EMCAD 解码器的三处跳连融合，默认 off 与当前 baseline 等价。
+    parser.add_argument("--cgcf_mode", choices=["off", "gate_only", "parallel_only", "cgcf"], default="off")
+    parser.add_argument("--cgcf_temperature", type=float, default=4.0)
+    parser.add_argument("--cgcf_threshold", type=float, default=0.5)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -304,6 +308,9 @@ def main():
     if args.run_name is None:
         # 时间格式精确到秒；同一秒并发启动仍可能重名。
         args.run_name = "acdc_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
+    if args.cgcf_mode != "off" and "_cgcf_" not in args.run_name:
+        args.run_name += "_cgcf_{}_t{}_th{}".format(
+            args.cgcf_mode, format(args.cgcf_temperature, "g"), format(args.cgcf_threshold, "g"))
     # 本次实验目录=<output_dir>/<run_name>。
     snapshot_path = os.path.join(args.output_dir, args.run_name)
     # 递归创建目录；已存在时复用。
