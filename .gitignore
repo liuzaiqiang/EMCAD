@@ -83,5 +83,4 @@ mlruns/
 events.out.tfevents.*
 .monai/
 
-mytest/private
-docs/
+mytest/
