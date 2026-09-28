@@ -67,11 +67,11 @@ PARAM_NAMES=(
 )
 
 {
-  echo "[INFO] Training parameters:"
+  echo "[INFO] parameters:"
   for name in "${PARAM_NAMES[@]}"; do
     printf '[INFO] %-24s=%s\n' "$name" "${!name}"
   done
-  echo "---------------------------ready to train---------------------------------"
+  echo "---------------------------ready to run---------------------------------"
 } | tee -a "${LOG_FILE}"
 
 
