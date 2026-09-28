@@ -15,17 +15,13 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
 
 
-#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #这条命令得到的是项目路径值，而不是sh/下的路径值
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
 cd "${PROJECT_DIR}"
-
-
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
-
 
 export CUDA_VISIBLE_DEVICES=0
 
@@ -41,18 +37,11 @@ SUPERVISION="mutation"
 BASE_LR=1e-4
 
 
-
-FUSION_MODE="${FUSION_MODE:-p1}"
-FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-0}"
-RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
-
-
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 TS="$(date +%F_%H%M%S)"
 LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}.log"
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
-
 
 
 PARAM_NAMES=(
@@ -61,7 +50,6 @@ PARAM_NAMES=(
   PROJECT_DIR
   LOG_DIR
   CUDA_VISIBLE_DEVICES
-  PYTHONUNBUFFERED
   SEED
   MAX_EPOCHS
   DATASET
@@ -69,17 +57,13 @@ PARAM_NAMES=(
   BATCH_SIZE
   SUPERVISION
   BASE_LR
-  LIST_DIR
-  ROOT_PATH
-  VOLUME_PATH
-  FUSION_MODE
-  FUSION_LOSS_WEIGHT
-  RELIABILITY_LOSS_WEIGHT
   TS
   RAND
   LOG_FILE
   RUN_ID
   PID_FILE
+
+  NUM_WORKERS
 )
 
 {
@@ -101,9 +85,6 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --seed "${SEED}" \
    --num_workers "${NUM_WORKERS}" \
   --supervision "${SUPERVISION}" \
-  --fusion_mode "${FUSION_MODE}" \
-  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
-  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

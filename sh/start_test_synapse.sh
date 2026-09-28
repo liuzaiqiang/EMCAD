@@ -2,8 +2,7 @@
 # Bash严格模式：测试准备阶段出现失败、未定义变量或失败管道时立即退出。
 set -euo pipefail
 
-# 将工作目录固定为脚本所在项目根，后续相对数据路径和PID文件不受调用位置影响。
-#PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
@@ -22,14 +21,11 @@ mkdir -p "${LOG_DIR}"
 
 CONDA_BASE="/home/mlf/anaconda3"
 CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
 
 
-
-# 加载conda shell函数并激活环境；失败会因set -e终止。
-source "${CONDA_BASE}/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV_PREFIX}"
 
 # 只暴露GPU0并关闭Python输出缓冲，便于实时查看测试日志。
 export CUDA_VISIBLE_DEVICES=0
@@ -39,8 +35,8 @@ export PYTHONUNBUFFERED=1
 # 测试输入尺寸、数据集名、体数据目录和病例列表目录。
 IMG_SIZE=224
 DATASET="Synapse"
-VOLUME_PATH="../data/Synapse/test_vol_h5"
-LIST_PATH="../data/Synapse/lists/lists_Synapse"
+
+
 
 #本项目ckpt无需作为启动参数，项目中写死了位置，best.pth文件必须放在项目的根目录下
 #CKPT="${PROJECT_DIR}/model_pth/SimMPNetSynapse....."
@@ -69,11 +65,9 @@ test -d "${VOLUME_PATH}" || { echo "[ERROR] VOLUME_PATH not found: ${VOLUME_PATH
 # 整个反斜杠块是一条测试命令：nohup抵抗终端断开，env写入RUN_ID供停止时核验进程身份。
 # stdout追加日志且stderr合并；末尾&转入后台。此脚本未显式写< /dev/null，stdin处理由nohup实现决定。
 nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
-  --volume_path "${VOLUME_PATH}" \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
-  --list_dir "${LIST_PATH}" \
-   --seed "${SEED}" \
+  --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。
