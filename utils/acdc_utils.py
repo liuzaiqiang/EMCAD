@@ -67,6 +67,8 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
+        caa_mode=getattr(args, "caa_mode", "off"),
+        caa_residual_scale=getattr(args, "caa_residual_scale", 0.1),
     )
 
 

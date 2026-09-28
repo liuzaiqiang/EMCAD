@@ -106,6 +106,9 @@ def parse_args():
     parser.add_argument("--no_pretrain", action="store_true")
     # PVT 预训练权重所在目录。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
+    # 内容感知抗混叠上采样只替换 EMCAD 三处 EUCB；off 保持原始 decoder。
+    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
+    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -304,6 +307,9 @@ def main():
     if args.run_name is None:
         # 时间格式精确到秒；同一秒并发启动仍可能重名。
         args.run_name = "acdc_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
+    if args.caa_mode != "off" and "_caa_" not in args.run_name:
+        args.run_name += "_caa_{}_rs{}".format(
+            args.caa_mode, format(args.caa_residual_scale, "g"))
     # 本次实验目录=<output_dir>/<run_name>。
     snapshot_path = os.path.join(args.output_dir, args.run_name)
     # 递归创建目录；已存在时复用。
