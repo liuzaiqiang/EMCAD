@@ -312,7 +312,7 @@ class EMCADNet(nn.Module):
     # 创新点：可靠性头的像素正确性校准损失。时间：20260923
     def fusion_auxiliary_loss(self, outputs, target, ce_loss, dice_loss, reliability_loss_weight=1.0):
         fused = self.fuse_outputs(outputs)
-        loss = 0.3 * ce_loss(fused, target.long()) + 0.7 * dice_loss(fused, target)
+        loss = 0.3 * ce_loss(fused, target.long()) + 0.7 * dice_loss(fused, target,softmax=True)
         
         if self.fusion_mode == 'pixel_reliability':
             with torch.no_grad():
