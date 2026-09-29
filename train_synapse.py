@@ -92,6 +92,7 @@ parser.add_argument('--batch_size', type=int, default=6, help='batch_size per gp
 parser.add_argument('--base_lr', type=float, default=0.0001, help='segmentation network learning rate')
 # 输入二维切片的目标高宽；这里一个整数同时用于 H 和 W。
 parser.add_argument('--img_size', type=int, default=224, help='input patch size of network input')
+
 # 期望使用的 GPU 数；大于 1 时 trainer.py 才尝试 nn.DataParallel。
 parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 # 1 表示确定性模式，0 表示允许 cuDNN benchmark 选择更快但可能不完全可复现的算法。

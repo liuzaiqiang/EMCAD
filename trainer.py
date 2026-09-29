@@ -56,8 +56,10 @@ def inference(args, model, best_performance):
     db_test = Synapse_dataset(base_dir=args.volume_path, split="test_vol",
                               list_dir=args.list_dir, nclass=args.num_classes)
     # batch_size=1 表示每次评估一个病例；不打乱才能保持列表与日志顺序稳定。
-    testloader = DataLoader(db_test, batch_size=1,
-                            shuffle=False, num_workers=1)
+    testloader = DataLoader(db_test, batch_size=1,shuffle=False, num_workers=1)
+    #testloader = DataLoader( db_test, batch_size=1,shuffle=False, num_workers=args.num_workers)
+
+    
     # 记录本轮需要处理的病例数，即 DataLoader 的迭代次数。
     logging.info("{} test iterations per epoch".format(len(testloader)))
     # 切换到eval模式，冻结 BatchNorm 运行统计并关闭 Dropout 的随机行为。
@@ -143,8 +145,8 @@ def trainer_synapse(args, model, snapshot_path):
         random.seed(args.seed + worker_id)
 
     # 构造训练批次：shuffle=True 每个epoch重排切片；pin_memory=True可加快CPU->GPU 拷贝。
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,
-                             worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,  worker_init_fn=worker_init_fn)
+    #trainloader = DataLoader(db_train,batch_size=batch_size,shuffle=True,num_workers=args.num_workers,pin_memory=True,worker_init_fn=worker_init_fn)
     # 下面两行原注释提示 Windows 多进程读取可能需要 num_workers=0；当前真正执行的是上面的 8。
     # windows下 num_workers需要改为0
     # trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,worker_init_fn=worker_init_fn)
