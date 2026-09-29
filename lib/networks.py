@@ -317,7 +317,7 @@ class EMCADNet(nn.Module):
     def fusion_auxiliary_loss(self, outputs, target, ce_loss, dice_loss, reliability_loss_weight=1.0):
         fused = self.fuse_outputs(outputs)
         #下面一行,本分支和最后汇总的分支 要改成 loss = 0.3 * ce_loss(fused, target.long()) + 0.7 * dice_loss(fused, target, softmax=True)
-        loss = 0.3 * ce_loss(fused, target.long()) + 0.7 * dice_loss(fused, target)
+        loss = 0.3 * ce_loss(fused, target.long()) + 0.7 * dice_loss(fused, target, softmax=True)
         if self.fusion_mode == 'pixel_reliability':
             with torch.no_grad():
                 correctness = torch.stack([

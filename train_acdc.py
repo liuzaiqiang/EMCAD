@@ -449,12 +449,14 @@ def main():
                     dice_loss=dice_loss,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
-            # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
-            fusion_model = model.module if hasattr(model, "module") else model
-            if args.fusion_loss_weight > 0 and getattr(fusion_model, "fusion_mode", "p1") != "p1":
-                loss = loss + args.fusion_loss_weight * fusion_model.fusion_auxiliary_loss(
-                    outputs, labels, ce_loss, dice_loss,
-                    reliability_loss_weight=args.reliability_loss_weight)
+                # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
+                #下面2-3行，可以往右缩进一下，保持在with autocast里  这样一个训练 batch 的所有前向计算和损失计算都处于同一个 AMP 范围：
+                #这样主监督损失和融合辅助损失采用同一套自动混合精度策略，训练协议更清晰。
+                fusion_model = model.module if hasattr(model, "module") else model
+                if args.fusion_loss_weight > 0 and getattr(fusion_model, "fusion_mode", "p1") != "p1":
+                    loss = loss + args.fusion_loss_weight * fusion_model.fusion_auxiliary_loss( outputs, labels, ce_loss, dice_loss,reliability_loss_weight=args.reliability_loss_weight)
+            
+            
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。
             scaler.step(optimizer)
