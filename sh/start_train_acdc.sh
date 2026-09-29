@@ -80,6 +80,14 @@ RUN_ID="train_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${R
 # 脚本已cd到项目根，因此相对PID文件位于项目根目录。
 PID_FILE="${RUN_ID}.pid"
 
+
+FUSION_MODE="pixel_reliability"
+FUSION_LOSS_WEIGHT="1"
+RELIABILITY_LOSS_WEIGHT="1"
+CAA_MODE="caa"
+CAA_RESIDUAL_SCALE="0.1"
+
+
 # tee -a把配置写入日志；RUN_ID同时打印到终端，供stop_train_acdc.sh作为参数使用。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATASET=${DATASET}" | tee -a "${LOG_FILE}" > /dev/null
@@ -114,6 +122,11 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${n_gpu}" \
   --deterministic "${DETERMINISTIC}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

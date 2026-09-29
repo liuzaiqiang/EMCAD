@@ -43,6 +43,12 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVIS
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
+FUSION_MODE="pixel_reliability"
+FUSION_LOSS_WEIGHT="1"
+RELIABILITY_LOSS_WEIGHT="1"
+CAA_MODE="caa"
+CAA_RESIDUAL_SCALE="0.1"
+
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -64,6 +70,12 @@ PARAM_NAMES=(
   PID_FILE
 
   NUM_WORKERS
+
+  FUSION_MODE
+  FUSION_LOSS_WEIGHT
+  RELIABILITY_LOSS_WEIGHT
+  CAA_MODE
+  CAA_RESIDUAL_SCALE
 )
 
 {
@@ -83,7 +95,12 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
-   --num_workers "${NUM_WORKERS}" \
+  --num_workers "${NUM_WORKERS}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --supervision "${SUPERVISION}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

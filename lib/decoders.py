@@ -541,9 +541,71 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
 #   eucb2: 320@14x14 -> 128@28x28
 #   eucb1: 128@28x28 ->  64@56x56
 # --------------------------------------------------------------------------------------------------
+class ContentAwareAntiAliasUpsample(nn.Module):
+    # 创新点：内容感知抗混叠特征上采样。时间：20260928
+    # 创新点：内容感知抗混叠上采样模块初始化。时间：20260928
+    def __init__(self, channels, mode='caa', residual_scale=0.1):
+        super(ContentAwareAntiAliasUpsample, self).__init__()
+        valid_modes = {'aa_only', 'content_only', 'caa'}
+        if mode not in valid_modes:
+            raise ValueError('Unknown content-aware upsampling mode: {}'.format(mode))
+        if float(residual_scale) < 0.0:
+            raise ValueError('Caa residual scale must be non-negative')
+        self.channels = int(channels)
+        self.mode = mode
+        self.residual_scale = (None if mode == 'aa_only' else
+                               nn.Parameter(torch.tensor(float(residual_scale))))
+
+        if self.mode == 'aa_only':
+            self.content_gate = None
+            self.residual_dw = None
+        else:
+            hidden = max(8, self.channels // 4)
+            self.content_gate = nn.Sequential(
+                nn.Conv2d(self.channels, hidden, kernel_size=1, bias=True),
+                act_layer('relu', inplace=True),
+                nn.Conv2d(hidden, 1, kernel_size=1, bias=True),
+            )
+            self.residual_dw = nn.Conv2d(
+                self.channels, self.channels, kernel_size=3, padding=1,
+                groups=self.channels, bias=False)
+        self.init_weights('normal')
+
+        kernel = torch.tensor(
+            [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0], [1.0, 2.0, 1.0]],
+            dtype=torch.float32) / 16.0
+        self.register_buffer('anti_alias_kernel', kernel.view(1, 1, 3, 3))
+
+    # 创新点：固定低通基底与内容门控残差的组合上采样。时间：20260928
+    def forward(self, x):
+        if self.mode == 'content_only':
+            base = torch.nn.functional.interpolate(x, scale_factor=2, mode='nearest')
+        else:
+            kernel = self.anti_alias_kernel.to(dtype=x.dtype, device=x.device)
+            kernel = kernel.expand(self.channels, 1, 3, 3)
+            pad_mode = 'reflect' if min(x.shape[-2:]) > 1 else 'replicate'
+            filtered = torch.nn.functional.pad(x, (1, 1, 1, 1), mode=pad_mode)
+            filtered = torch.nn.functional.conv2d(filtered, kernel, groups=self.channels)
+            base = torch.nn.functional.interpolate(
+                filtered, scale_factor=2, mode='bilinear', align_corners=False)
+
+        if self.mode == 'aa_only':
+            return base
+
+        gate = torch.sigmoid(self.content_gate(base))
+        residual = self.residual_dw(base)
+        scale = torch.clamp(self.residual_scale, min=0.0, max=1.0)
+        return base + scale * gate * residual
+
+    # 创新点：内容感知抗混叠上采样参数初始化。时间：20260928
+    def init_weights(self, scheme=''):
+        named_apply(partial(_init_weights, scheme=scheme), self)
+
+
 class EUCB(nn.Module):
     # C_in 是当前深层特征通道，C_out 要与下一层 skip 的通道一致。
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation='relu'):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation='relu',
+                 caa_mode='off', caa_residual_scale=0.1):
         # 构造期只记录通道并建立两个子序列；scale_factor=2 是写死的，所以每个 EUCB 恢复一级分辨率。
         # 初始化基础模块。
         super(EUCB, self).__init__()
@@ -553,19 +615,26 @@ class EUCB(nn.Module):
         # 保存输出通道数。
         self.out_channels = out_channels
         # 上采样和深度卷积组合；空间尺寸先乘 2，通道暂时保持 C_in。
-        self.up_dwc = nn.Sequential(
-            # 插值本身没有可学习参数，负责几何放大；后面的深度卷积负责学习如何修整复制后的局部响应。
-            # 未指定 mode 时 PyTorch 对 4D 张量采用最近邻插值；输出约为 (2H,2W)。
-            nn.Upsample(scale_factor=2),
-            # 3x3 depth-wise convolution 在每个通道内细化上采样特征。
-            # EMCAD 构造中 eucb_ks 固定为 3，传入 stride=eucb_ks//2=1，因此该卷积不会再次改变尺寸。
-            nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size, stride=stride,
-                      padding=kernel_size // 2, groups=self.in_channels, bias=False),
-            # 归一化 C_in 个深度卷积输出通道。
-            nn.BatchNorm2d(self.in_channels),
-            # 论文式(9)在这里使用 ReLU。
-            act_layer(activation, inplace=True)
-        )
+        self.caa_mode = str(caa_mode)
+        if self.caa_mode == 'off':
+            self.up_dwc = nn.Sequential(
+                nn.Upsample(scale_factor=2),
+                nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size, stride=stride,
+                          padding=kernel_size // 2, groups=self.in_channels, bias=False),
+                nn.BatchNorm2d(self.in_channels),
+                act_layer(activation, inplace=True)
+            )
+        else:
+            self.up_dwc = nn.Sequential(
+                ContentAwareAntiAliasUpsample(
+                    self.in_channels, mode=self.caa_mode,
+                    residual_scale=caa_residual_scale),
+                nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size,
+                          stride=stride, padding=kernel_size // 2,
+                          groups=self.in_channels, bias=False),
+                nn.BatchNorm2d(self.in_channels),
+                act_layer(activation, inplace=True),
+            )
         # point-wise convolution 负责从 C_in 投影到下一解码级的 C_out。
         self.pwc = nn.Sequential(
             # 这里只有一个卷积，理论上可以不用 Sequential；保留容器形式便于未来追加 BN/激活而不改 forward。
@@ -879,7 +948,7 @@ class SAB(nn.Module):
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6'):
+                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -897,7 +966,9 @@ class EMCAD(nn.Module):
 
         # 第三级上采样：channels[0] -> channels[1]，空间尺寸乘 2。
         # 名称 eucb3 表示它的输出属于 d3，不是“第 3 个被执行的 EUCB”。
-        self.eucb3 = EUCB(in_channels=channels[0], out_channels=channels[1], kernel_size=eucb_ks, stride=eucb_ks // 2)
+        self.eucb3 = EUCB(in_channels=channels[0], out_channels=channels[1], kernel_size=eucb_ks,
+                          stride=eucb_ks // 2, caa_mode=caa_mode,
+                          caa_residual_scale=caa_residual_scale)
         # 用上采样 d3 门控同尺度 x3；内部通道为 channels[1]/2，默认采用大核分组卷积。
         self.lgag3 = LGAG(F_g=channels[1], F_l=channels[1], F_int=channels[1] // 2, kernel_size=lgag_ks,
                           groups=channels[1] // 2)
@@ -909,7 +980,9 @@ class EMCAD(nn.Module):
 
         # 第二级上采样：channels[1] -> channels[2]，空间尺寸再乘 2。
         # eucb2 输出通道与 x2/skip[1] 完全一致，才能让 LGAG 两路投影和后续逐元素加法成立。
-        self.eucb2 = EUCB(in_channels=channels[1], out_channels=channels[2], kernel_size=eucb_ks, stride=eucb_ks // 2)
+        self.eucb2 = EUCB(in_channels=channels[1], out_channels=channels[2], kernel_size=eucb_ks,
+                          stride=eucb_ks // 2, caa_mode=caa_mode,
+                          caa_residual_scale=caa_residual_scale)
         # 门控编码器第二级 skip x2。
         self.lgag2 = LGAG(F_g=channels[2], F_l=channels[2], F_int=channels[2] // 2, kernel_size=lgag_ks,
                           groups=channels[2] // 2)
@@ -920,7 +993,9 @@ class EMCAD(nn.Module):
 
         # 第一级上采样：channels[2] -> channels[3]，到达编码器最高分辨率特征层。
         # “第一级”仍只到 encoder stage1 的 1/4 尺度；解码器内部没有继续到 1/2 或原图尺度。
-        self.eucb1 = EUCB(in_channels=channels[2], out_channels=channels[3], kernel_size=eucb_ks, stride=eucb_ks // 2)
+        self.eucb1 = EUCB(in_channels=channels[2], out_channels=channels[3], kernel_size=eucb_ks,
+                          stride=eucb_ks // 2, caa_mode=caa_mode,
+                          caa_residual_scale=caa_residual_scale)
         # 门控最浅层 skip x1；int(...) 与 //2 在正整数通道下结果相同。
         self.lgag1 = LGAG(F_g=channels[3], F_l=channels[3], F_int=int(channels[3] / 2), kernel_size=lgag_ks,
                           groups=int(channels[3] / 2))

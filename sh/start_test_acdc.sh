@@ -71,6 +71,14 @@ LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 RUN_ID="test_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
+
+FUSION_MODE="pixel_reliability"
+FUSION_LOSS_WEIGHT="1"
+RELIABILITY_LOSS_WEIGHT="1"
+CAA_MODE="caa"
+CAA_RESIDUAL_SCALE="0.1"
+
+
 # 将数据、权重、模型输入和运行标识追加到日志；RUN_ID另行打印到终端，供stop_test_acdc.sh使用。
 echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATASET=${DATASET}" | tee -a "${LOG_FILE}" > /dev/null
@@ -109,6 +117,11 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_ACDC.py \
   --max_cases "${MAX_CASES}" \
   --device auto \
   --save_nii \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --save_npz \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

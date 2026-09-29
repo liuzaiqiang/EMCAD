@@ -529,7 +529,8 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 # EMCAD 的训练/推理接口返回多个尺度或多个解码头；这里选择列表最后
                 # 一个作为最终结果，而不是把所有输出平均。训练时的深监督仍可能使用
                 # 全部输出，但本测试函数只使用最终头。
-                outputs = P[-1]
+                base_net = net.module if hasattr(net, 'module') else net
+                outputs = base_net.fuse_outputs(P) if hasattr(base_net, 'fuse_outputs') else P[-1]
                 # 先在类别维 softmax，再 argmax 得到每像素类别索引，并去掉 batch 维。
                 # softmax 把 logits 变成概率，argmax 再选概率最大的类别；由于只需要
                 # 离散标签而不需要概率值，最后得到 [H,W] 的整数类别图。
@@ -610,7 +611,8 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
             # 获取模型多尺度输出。
             P = net(input)
             # 选择最终最高分辨率预测头。
-            outputs = P[-1]
+            base_net = net.module if hasattr(net, 'module') else net
+            outputs = base_net.fuse_outputs(P) if hasattr(base_net, 'fuse_outputs') else P[-1]
             # softmax 后按类别取最大概率索引。
             out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
             # 去掉设备和计算图依赖，得到二维预测数组。
@@ -716,7 +718,8 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
                 # 是 P[-1]，否则后面的 softmax/argmax 无法得到网络输出。
                 outputs = 0.0
                 # 采用最高分辨率的最终预测头。
-                outputs = P[-1]
+                base_net = net.module if hasattr(net, 'module') else net
+                outputs = base_net.fuse_outputs(P) if hasattr(base_net, 'fuse_outputs') else P[-1]
                 # 得到每像素类别索引。
                 out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
                 # 转为 NumPy。
@@ -752,7 +755,8 @@ def val_single_volume(image, label, net, classes, patch_size=[256, 256], test_sa
             # 获取多尺度输出。
             P = net(input)
             # 取最终头。
-            outputs = P[-1]
+            base_net = net.module if hasattr(net, 'module') else net
+            outputs = base_net.fuse_outputs(P) if hasattr(base_net, 'fuse_outputs') else P[-1]
             # 转成类别图。
             out = torch.argmax(torch.softmax(outputs, dim=1), dim=1).squeeze(0)
             # 搬回 CPU NumPy。

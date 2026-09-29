@@ -44,7 +44,11 @@ LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_seed${seed}_maxepochs_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
-
+FUSION_MODE="pixel_reliability"
+FUSION_LOSS_WEIGHT="1"
+RELIABILITY_LOSS_WEIGHT="1"
+CAA_MODE="caa"
+CAA_RESIDUAL_SCALE="0.1"
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -62,6 +66,13 @@ PARAM_NAMES=(
   PID_FILE
 
   NUM_WORKERS
+
+  FUSION_MODE
+  FUSION_LOSS_WEIGHT
+  RELIABILITY_LOSS_WEIGHT
+  CAA_MODE
+  CAA_RESIDUAL_SCALE
+
 )
 
 {
@@ -81,6 +92,13 @@ nohup env RUN_ID="${RUN_ID}"   python -u test_synapse.py \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
   --seed "${SEED}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+
+
   >> "${LOG_FILE}" 2>&1 &
 
 
