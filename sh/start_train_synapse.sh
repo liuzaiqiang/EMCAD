@@ -25,8 +25,6 @@ mkdir -p "${LOG_DIR}"
 
 export CUDA_VISIBLE_DEVICES=0
 
-#windows环境下运行时，设置为0（0 表示由主进程加载数据，最稳定）;linux环境下运行时，设置为8。
-NUM_WORKERS=8
 
 SEED=2222
 MAX_EPOCHS=300
@@ -83,7 +81,6 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
-   --num_workers "${NUM_WORKERS}" \
   --supervision "${SUPERVISION}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-  # 声明本文件使用 UTF-8，保证下面的中文注释在 Windows 和 Linux 上都能正常读取。
-"""将 EMCAD/Synapse 测试集的三维 .npy.h5 病例拆成训练格式的二维 .npz 切片。"""  # 用一句话说明脚本的唯一职责，避免把测试推理逻辑混入预处理。
+"""将 EMCAD/Synapse 测试集的三维 .npy.h5 病例拆成训练格式的二维 .npz 切片。""" 
 
 import argparse  # 解析输入目录、输出目录和病例数量等命令行参数。
 from pathlib import Path  # 使用跨平台路径对象处理 Windows 和 Linux 路径。
