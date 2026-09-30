@@ -74,6 +74,8 @@ nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
   --img_size "${IMG_SIZE}" \
   --list_dir "${LIST_PATH}" \
    --seed "${SEED}" \
+   --semantic_feedback \
+  --feedback_init_scale 0.1 \
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。

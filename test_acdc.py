@@ -82,6 +82,10 @@ def parse_args():
     # MSCB 激活函数。
     parser.add_argument("--activation_mscb", default="relu6")
     parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
+    parser.add_argument("--semantic_feedback", action="store_true",
+                        help="enable one-way decoder cross-stage semantic feedback")
+    parser.add_argument("--feedback_init_scale", type=float, default=0.1,
+                        help="initial residual scale for decoder semantic feedback")
     # 出现该旗标表示关闭并行深度卷积。
     parser.add_argument("--no_dw_parallel", action="store_true")
     # 出现该旗标表示用 concat 聚合多尺度特征；默认 add。

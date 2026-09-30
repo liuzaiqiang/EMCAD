@@ -99,6 +99,8 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --fusion_mode "${FUSION_MODE}" \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --semantic_feedback \
+  --feedback_init_scale 0.1 \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # $! 是当前 shell 最近启动的后台进程PID，即 nohup/env/python 进程链最终跟踪的训练进程。

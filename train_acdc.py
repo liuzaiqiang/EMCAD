@@ -109,6 +109,10 @@ def parse_args():
     parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
     parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
     parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
+    parser.add_argument("--semantic_feedback", action="store_true",
+                        help="enable one-way decoder cross-stage semantic feedback")
+    parser.add_argument("--feedback_init_scale", type=float, default=0.1,
+                        help="initial residual scale for decoder semantic feedback")
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(

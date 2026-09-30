@@ -29,7 +29,7 @@ for split in splits:
         # 与训练 CT 对齐的分割标签目录。
         seg_path = '../data/synapse/Abdomen/RawData/TrainSet/label'
         # 三相邻切片训练样本的输出目录；mframes 表示 multiple frames。
-        save_path = '../data/synapse/train_npz_mframes/'
+        save_path = '../data/Synapse/train_npz_mframes/'
     # 测试集不拆片，保存完整体数据供逐切片推理后重组评测。
     else:
         # Synapse 原始测试 CT 目录。

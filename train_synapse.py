@@ -35,9 +35,9 @@ from trainer import trainer_synapse
 parser = argparse.ArgumentParser()
 
 # 训练数据根目录：每个 Synapse 二维切片通常对应一个 .npz 文件。
-parser.add_argument('--root_path', type=str, default='../data/synapse/train_npz', help='root dir for data')
+parser.add_argument('--root_path', type=str, default='../data/Synapse/train_npz', help='root dir for data')
 # 完整体数据目录：验证/测试按病例读取 .npy.h5，   而不是逐切片 .npz。
-parser.add_argument('--volume_path', type=str, default='../data/synapse/test_vol_h5',
+parser.add_argument('--volume_path', type=str, default='../data/Synapse/test_vol_h5',
                     help='root dir for validation volume data')
 # 数据集键名稍后用于查询 dataset_config 和 trainer 映射表；当前只注册 Synapse。
 parser.add_argument('--dataset', type=str, default='Synapse', help='experiment_name')
@@ -82,6 +82,10 @@ parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
                     help='weight of the fused-output CE+Dice auxiliary loss; keep 0 for the original baseline')
 parser.add_argument('--reliability_loss_weight', type=float, default=1.0,
                     help='pixel reliability BCE weight used only by pixel_reliability')
+parser.add_argument('--semantic_feedback', action='store_true',
+                    help='enable one-way decoder cross-stage semantic feedback')
+parser.add_argument('--feedback_init_scale', type=float, default=0.1,
+                    help='initial residual scale for decoder semantic feedback')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -222,6 +226,8 @@ if __name__ == "__main__":
     snapshot_path = os.path.join("model_pth", exp_name)
     if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
         snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
+    if args.semantic_feedback:
+        snapshot_path += '_semantic_feedback_s{}'.format(args.feedback_init_scale)
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
@@ -232,7 +238,9 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     fusion_mode=args.fusion_mode)
+                     fusion_mode=args.fusion_mode,
+                     semantic_feedback=args.semantic_feedback,
+                     feedback_init_scale=args.feedback_init_scale)
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

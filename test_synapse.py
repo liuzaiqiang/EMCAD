@@ -94,6 +94,10 @@ parser.add_argument('--fusion_mode', type=str, default='p1',
                     help='must match the training checkpoint fusion mode')
 parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
                     help='must match the training output directory naming')
+parser.add_argument('--semantic_feedback', action='store_true',
+                    help='enable one-way decoder cross-stage semantic feedback')
+parser.add_argument('--feedback_init_scale', type=float, default=0.1,
+                    help='initial residual scale for decoder semantic feedback')
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -324,6 +328,8 @@ if __name__ == "__main__":
                                  f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
     if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
         snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
+    if args.semantic_feedback:
+        snapshot_path += '_semantic_feedback_s{}'.format(args.feedback_init_scale)
 
 
 
@@ -332,7 +338,9 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     fusion_mode=args.fusion_mode)
+                     fusion_mode=args.fusion_mode,
+                     semantic_feedback=args.semantic_feedback,
+                     feedback_init_scale=args.feedback_init_scale)
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

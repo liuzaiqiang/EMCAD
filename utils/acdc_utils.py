@@ -68,6 +68,8 @@ def build_model(args, pretrain):
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
         fusion_mode=getattr(args, "fusion_mode", "p1"),
+        semantic_feedback=getattr(args, "semantic_feedback", False),
+        feedback_init_scale=getattr(args, "feedback_init_scale", 0.1),
     )
 
 

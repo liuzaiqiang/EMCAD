@@ -115,6 +115,8 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --n_gpu "${n_gpu}" \
   --deterministic "${DETERMINISTIC}" \
   --seed "${SEED}" \
+  --semantic_feedback \
+  --feedback_init_scale 0.1 \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # 保存刚启动后台任务的PID；脚本本身成功结束不代表训练完成，只表示启动和PID记录成功。

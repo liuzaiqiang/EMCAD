@@ -110,6 +110,8 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_ACDC.py \
   --device auto \
   --save_nii \
   --save_npz \
+  --semantic_feedback \
+  --feedback_init_scale 0.1 \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # $!取得刚启动的后台测试进程PID；先报告，再写入与RUN_ID同名的PID文件。
