@@ -68,6 +68,10 @@ def build_model(args, pretrain):
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
         fusion_mode=getattr(args, "fusion_mode", "p1"),
+        deformable_msdc=bool(getattr(args, "deformable_msdc", 0)),
+        deformable_msdc_stages=getattr(args, "deformable_msdc_stages", "d2,d1"),
+        deformable_offset_scale=getattr(args, "deformable_offset_scale", 1.0),
+        deformable_msdc_modulation=bool(getattr(args, "deformable_msdc_modulation", 0)),
     )
 
 

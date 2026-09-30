@@ -52,6 +52,12 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVIS
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
+DEFORMABLE_MSDC=1
+DEFORMABLE_MSDC_STAGES="d2,d1"
+DEFORMABLE_OFFSET_SCALE=1.0
+DEFORMABLE_MSDC_MODULATION=0
+
+
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -76,6 +82,11 @@ PARAM_NAMES=(
   FUSION_LOSS_WEIGHT
   RELIABILITY_LOSS_WEIGHT
 
+  DEFORMABLE_MSDC
+  DEFORMABLE_MSDC_STAGES
+  DEFORMABLE_OFFSET_SCALE
+  DEFORMABLE_MSDC_MODULATION
+
 )
 
 {
@@ -83,9 +94,9 @@ PARAM_NAMES=(
   for name in "${PARAM_NAMES[@]}"; do
     printf '[INFO] %-24s=%s\n' "$name" "${!name}"
   done
-  echo "---------------------------ready to run---------------------------------"
+  
 } | tee -a "${LOG_FILE}"
-echo "---------------------------ready to train---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+echo "---------------------------ready to run---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
 
 # 启动命令块：nohup使进程忽略终端挂断信号；env把RUN_ID写入子进程环境，停止脚本会读取它防止PID复用误杀。
 # 各反斜杠续行共同组成一条命令，不能在续行之间插入注释。
@@ -100,6 +111,10 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --fusion_mode "${FUSION_MODE}" \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --deformable_msdc "${DEFORMABLE_MSDC}" \
+  --deformable_msdc_stages "${DEFORMABLE_MSDC_STAGES}" \
+  --deformable_offset_scale "${DEFORMABLE_OFFSET_SCALE}" \
+  --deformable_msdc_modulation "${DEFORMABLE_MSDC_MODULATION}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 # $! 是当前 shell 最近启动的后台进程PID，即 nohup/env/python 进程链最终跟踪的训练进程。

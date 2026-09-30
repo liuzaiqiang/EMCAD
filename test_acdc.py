@@ -63,9 +63,9 @@ def parse_args():
     # 必填模型权重路径；通常使用训练验证集选择出的 best.pth。
     parser.add_argument("--checkpoint", required=True)
     # ACDC 根目录，测试时要求存在 test/。
-    parser.add_argument("--root_path", default="./data/ACDC")
+    parser.add_argument("--root_path", default="../data/ACDC")
     # 划分清单目录，测试时要求 test.txt。
-    parser.add_argument("--list_dir", default="./data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default="../data/ACDC/lists/lists_ACDC")
     # 预测/日志目录；None 时放在 checkpoint 同级 predictions/。
     parser.add_argument("--output_dir", default=None)
     # 指标 CSV 路径；None 时放在 checkpoint 同级 test_metrics.csv。
@@ -82,6 +82,10 @@ def parse_args():
     # MSCB 激活函数。
     parser.add_argument("--activation_mscb", default="relu6")
     parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
+    parser.add_argument("--deformable_msdc", type=int, default=0, choices=[0, 1])
+    parser.add_argument("--deformable_msdc_stages", type=str, default="d2,d1")
+    parser.add_argument("--deformable_offset_scale", type=float, default=1.0)
+    parser.add_argument("--deformable_msdc_modulation", type=int, default=0, choices=[0, 1])
     # 出现该旗标表示关闭并行深度卷积。
     parser.add_argument("--no_dw_parallel", action="store_true")
     # 出现该旗标表示用 concat 聚合多尺度特征；默认 add。

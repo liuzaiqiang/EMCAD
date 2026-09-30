@@ -1,5 +1,6 @@
 # 导入 PyTorch 张量运算；本文件中的特征相加、拼接、转置都依赖 torch。
 import torch
+import torch.nn.functional as F
 # 导入神经网络模块别名，卷积、归一化、激活和 ModuleList 均从 nn 创建。
 import torch.nn as nn
 # partial 用来预先固定权重初始化函数的 scheme 参数，再交给 named_apply 递归调用。
@@ -251,9 +252,131 @@ def channel_shuffle(x, groups):
 # 当前 EMCAD 中所有 MSCB 都使用 stride=1，所以串行模式可以做 x+dw_out；如果单独把 MSCB
 # 配成 stride=2 且 dw_parallel=False，原 x 与下采样后的 dw_out 空间尺寸不同，会无法相加。
 # --------------------------------------------------------------------------------------------------
+# 创新点：通过可学习偏移和可选调制掩膜，使 MSDC 的深度卷积采样位置适应不规则器官边界。时间：20260929
+class DeformableDepthwiseConv2d(nn.Module):
+    """Depth-wise deformable convolution implemented with ``grid_sample``.
+
+    The layer keeps the same ``[B, C, H, W]`` input/output contract as the
+    regular depth-wise convolution used by MSDC.  Offsets are predicted at
+    the output resolution and are constrained by ``tanh`` so that a run can
+    expose stable, bounded sampling diagnostics without a custom CUDA op.
+    """
+
+    # 创新点：配置有界偏移、可选调制掩膜和深度卷积核，保持 MSDC 的 NCHW 接口。时间：20260929
+    def __init__(self, channels, kernel_size, stride=1, padding=None,
+                 offset_scale=1.0, modulation=False):
+        super(DeformableDepthwiseConv2d, self).__init__()
+        if kernel_size % 2 != 1:
+            raise ValueError('DeformableDepthwiseConv2d requires an odd kernel size')
+        self.channels = int(channels)
+        self.kernel_size = int(kernel_size)
+        self.stride = int(stride)
+        self.padding = self.kernel_size // 2 if padding is None else int(padding)
+        self.offset_scale = float(offset_scale)
+        if self.offset_scale < 0:
+            raise ValueError('offset_scale must be non-negative')
+        self.modulation = bool(modulation)
+        n_points = self.kernel_size * self.kernel_size
+
+        self.weight = nn.Parameter(torch.empty(self.channels, 1, self.kernel_size, self.kernel_size))
+        self.offset_predictor = nn.Conv2d(
+            self.channels, 2 * n_points, kernel_size=3, stride=self.stride,
+            padding=1, bias=True)
+        self.mask_predictor = None
+        if self.modulation:
+            self.mask_predictor = nn.Conv2d(
+                self.channels, n_points, kernel_size=3, stride=self.stride,
+                padding=1, bias=True)
+        self.register_buffer('_kernel_y', torch.empty(0), persistent=False)
+        self.register_buffer('_kernel_x', torch.empty(0), persistent=False)
+        self.last_offset_stats = None
+        self.reset_parameters()
+
+    # 创新点：将偏移和调制预测器初始化为恒等采样起点，避免启用模块时破坏原始 MSDC 的初始响应。时间：20260929
+    def reset_offset_parameters(self):
+        nn.init.zeros_(self.offset_predictor.weight)
+        nn.init.zeros_(self.offset_predictor.bias)
+        if self.mask_predictor is not None:
+            nn.init.zeros_(self.mask_predictor.weight)
+            nn.init.zeros_(self.mask_predictor.bias)
+
+    # 创新点：初始化可变形深度卷积核，并保留零偏移的恒等采样起点。时间：20260929
+    def reset_parameters(self):
+        nn.init.normal_(self.weight, std=0.02)
+        self.reset_offset_parameters()
+
+    # 创新点：生成规则核点坐标，作为学习偏移的局部参考网格。时间：20260929
+    def _kernel_coordinates(self, device, dtype):
+        radius = self.kernel_size // 2
+        coords = torch.arange(-radius, radius + 1, device=device, dtype=dtype)
+        ky, kx = torch.meshgrid(coords, coords, indexing='ij')
+        return ky.reshape(-1), kx.reshape(-1)
+
+    # 创新点：在零填充特征图上按逐点偏移采样，并以深度卷积权重独立聚合每个通道。时间：20260929
+    def forward(self, x):
+        b, c, h, w = x.shape
+        if c != self.channels:
+            raise ValueError('Expected {} channels, got {}'.format(self.channels, c))
+        k = self.kernel_size
+        h_out = (h + 2 * self.padding - k) // self.stride + 1
+        w_out = (w + 2 * self.padding - k) // self.stride + 1
+        offsets = self.offset_predictor(x)
+        if offsets.shape[-2:] != (h_out, w_out):
+            raise RuntimeError('Unexpected offset shape {} for output ({}, {})'.format(
+                tuple(offsets.shape[-2:]), h_out, w_out))
+        offsets = torch.tanh(offsets) * self.offset_scale
+        offsets = offsets.view(b, 2, k * k, h_out, w_out)
+        masks = None
+        if self.mask_predictor is not None:
+            # 2*sigmoid keeps a zero-initialized mask exactly at the ordinary
+            # depth-wise-convolution response while remaining bounded.
+            masks = 2.0 * torch.sigmoid(self.mask_predictor(x))
+            masks = masks.view(b, k * k, h_out, w_out)
+
+        x_padded = F.pad(x, (self.padding, self.padding, self.padding, self.padding))
+        hp, wp = x_padded.shape[-2:]
+        base_y = torch.arange(h_out, device=x.device, dtype=x.dtype).view(1, h_out, 1) * self.stride
+        base_x = torch.arange(w_out, device=x.device, dtype=x.dtype).view(1, 1, w_out) * self.stride
+        kernel_y, kernel_x = self._kernel_coordinates(x.device, x.dtype)
+        outputs = []
+        for point in range(k * k):
+            # x_padded 的坐标原点位于原图左上角外扩 padding 之后；加回
+            # padding 后，offset=0 与 nn.Conv2d(padding=padding) 的采样位置一致。
+            sample_y = base_y + kernel_y[point] + self.padding + offsets[:, 0, point]
+            sample_x = base_x + kernel_x[point] + self.padding + offsets[:, 1, point]
+            if hp > 1:
+                norm_y = sample_y * (2.0 / (hp - 1)) - 1.0
+            else:
+                norm_y = torch.zeros_like(sample_y)
+            if wp > 1:
+                norm_x = sample_x * (2.0 / (wp - 1)) - 1.0
+            else:
+                norm_x = torch.zeros_like(sample_x)
+            grid = torch.stack((norm_x, norm_y), dim=-1)
+            sampled = F.grid_sample(
+                x_padded, grid.expand(b, h_out, w_out, 2), mode='bilinear',
+                padding_mode='zeros', align_corners=True)
+            if masks is not None:
+                sampled = sampled * masks[:, point:point + 1]
+            outputs.append(sampled * self.weight[:, 0, point // k, point % k].view(1, c, 1, 1))
+        out = torch.stack(outputs, dim=0).sum(dim=0)
+
+        abs_offsets = offsets.detach().abs()
+        self.last_offset_stats = {
+            'mean': offsets.detach().mean(),
+            'abs_mean': abs_offsets.mean(),
+            'abs_max': abs_offsets.max(),
+            'clip_ratio': (abs_offsets >= self.offset_scale * 0.99).float().mean()
+            if self.offset_scale > 0 else 0.0,
+        }
+        return out
+
+
+# --------------------------------------------------------------------------------------------------
 class MSDC(nn.Module):
     # in_channels 是每个深度卷积分支的通道数；kernel_sizes 通常为 [1,3,5]。
-    def __init__(self, in_channels, kernel_sizes, stride, activation='relu6', dw_parallel=True):
+    def __init__(self, in_channels, kernel_sizes, stride, activation='relu6', dw_parallel=True,
+                 deformable=False, offset_scale=1.0, modulation=False):
         # 本构造函数只“搭建”各尺度卷积支路并注册参数，不处理真实 batch；真实张量在 forward 才进入。
         # 初始化 nn.Module 的内部注册结构。
         super(MSDC, self).__init__()
@@ -266,6 +389,9 @@ class MSDC(nn.Module):
         self.activation = activation
         # True 表示所有分支读取同一个输入；False 表示递归更新输入，近似论文式(6)。
         self.dw_parallel = dw_parallel
+        self.deformable = bool(deformable)
+        self.offset_scale = float(offset_scale)
+        self.modulation = bool(modulation)
 
         # ModuleList 负责注册数量由 kernel_sizes 动态决定的多个分支。
         self.dwconvs = nn.ModuleList([
@@ -276,8 +402,13 @@ class MSDC(nn.Module):
                 # groups=C 使每个输入通道独立卷积；padding=k//2 在 stride=1 时保持 H、W。
                 # 参数量对比：普通 k*k 卷积约有 C_ex*C_ex*k*k 个权重；此处深度卷积只有
                 # C_ex*k*k 个权重。跨通道融合随后由 MSCB 的 1x1 point-wise convolution 完成。
-                nn.Conv2d(self.in_channels, self.in_channels, kernel_size, stride, kernel_size // 2,
-                          groups=self.in_channels, bias=False),
+                (DeformableDepthwiseConv2d(
+                    self.in_channels, kernel_size, stride, kernel_size // 2,
+                    offset_scale=self.offset_scale,
+                    modulation=self.modulation)
+                 if self.deformable and kernel_size in (3, 5) else
+                 nn.Conv2d(self.in_channels, self.in_channels, kernel_size, stride, kernel_size // 2,
+                           groups=self.in_channels, bias=False)),
                 # 对每个通道的卷积结果做批归一化。
                 nn.BatchNorm2d(self.in_channels),
                 # 默认 ReLU6，对应论文式(5)中的 R6。
@@ -289,6 +420,11 @@ class MSDC(nn.Module):
 
         # 解码器新建时立即初始化本模块及其所有子层。
         self.init_weights('normal')
+        # named_apply also reaches the offset predictors; restore their
+        # identity initialization after the common decoder initialization.
+        for branch in self.dwconvs:
+            if isinstance(branch[0], DeformableDepthwiseConv2d):
+                branch[0].reset_offset_parameters()
 
     # scheme 可切换初始化方案；当前 EMCAD 构造路径传入 normal。
     def init_weights(self, scheme=''):
@@ -353,7 +489,7 @@ class MSCB(nn.Module):
 
     # 关键参数：C_in、C_out、步幅、多尺度核、扩张倍率、并/串行和分支聚合方式。
     def __init__(self, in_channels, out_channels, stride, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True,
-                 add=True, activation='relu6'):
+                 add=True, activation='relu6', deformable=False, offset_scale=1.0, modulation=False):
         # 参数彼此的影响：kernel_sizes 决定 MSDC 分支数和感受野；expansion_factor 决定中间宽度；
         # dw_parallel 决定分支依赖关系；add 决定分支合并方式；activation 决定 pconv1 与 MSDC 激活。
         # kernel_sizes 的默认 list 在本实现中只读取、不修改，因此不会触发常见的“可变默认参数被污染”问题。
@@ -402,7 +538,8 @@ class MSCB(nn.Module):
         )
         # MSDC 在 C_ex 通道上执行多个深度卷积尺度。
         self.msdc = MSDC(self.ex_channels, self.kernel_sizes, self.stride, self.activation,
-                         dw_parallel=self.dw_parallel)
+                         dw_parallel=self.dw_parallel, deformable=deformable,
+                         offset_scale=offset_scale, modulation=modulation)
         # 注意：add 只控制“这些 MSDC 尺度分支”的融合，不控制 EMCAD 主路与 encoder skip 的融合。
         # 加法聚合不改变通道数，合并后仍是 C_ex。
         if self.add == True:
@@ -493,7 +630,7 @@ class MSCB(nn.Module):
 #   后续 n-1 块：始终保持 (B,C_out,H_out,W_out)。
 # 当前 EMCAD 的 mscb4/3/2/1 全部传 n=1、stride=1，因此每级只创建一个 MSCB。
 def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True,
-              add=True, activation='relu6'):
+              add=True, activation='relu6', deformable=False, offset_scale=1.0, modulation=False):
     """
     create a series of multi-scale convolution blocks.
     """
@@ -502,7 +639,8 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
     convs = []
     # 第一个块负责 C_in -> C_out，并可使用调用方指定的 stride。
     mscb = MSCB(in_channels, out_channels, stride, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                dw_parallel=dw_parallel, add=add, activation=activation)
+                dw_parallel=dw_parallel, add=add, activation=activation,
+                deformable=deformable, offset_scale=offset_scale, modulation=modulation)
     # 加入第一个 MSCB。
     convs.append(mscb)
     # n>1 时继续堆叠保持 C_out 和 stride=1 的块。
@@ -513,7 +651,8 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
         for i in range(1, n):
             # 后续块均保持通道和空间尺寸。
             mscb = MSCB(out_channels, out_channels, 1, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                        dw_parallel=dw_parallel, add=add, activation=activation)
+                        dw_parallel=dw_parallel, add=add, activation=activation,
+                        deformable=deformable, offset_scale=offset_scale, modulation=modulation)
             # 把后续块加入列表。
             convs.append(mscb)
     # Sequential 将列表中的块按顺序执行并注册参数。
@@ -879,19 +1018,39 @@ class SAB(nn.Module):
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6'):
+                 add=True, lgag_ks=3, activation='relu6', deformable_msdc=False,
+                 deformable_msdc_stages='d2,d1', deformable_offset_scale=1.0,
+                 deformable_msdc_modulation=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
         # 初始化基础模块。
         super(EMCAD, self).__init__()
+        # 只在显式启用候选方法时创建可变形分支；关闭时保持 baseline 的模块结构。
+        if isinstance(deformable_msdc_stages, str):
+            deformable_stages = {
+                item.strip().lower() for item in deformable_msdc_stages.split(',') if item.strip()
+            }
+        else:
+            deformable_stages = {str(item).strip().lower() for item in deformable_msdc_stages}
+        valid_stages = {'d4', 'd3', 'd2', 'd1'}
+        unknown_stages = deformable_stages - valid_stages
+        if unknown_stages:
+            raise ValueError('Unknown deformable MSDC stage(s): {}'.format(sorted(unknown_stages)))
+        self.deformable_msdc = bool(deformable_msdc)
+        self.deformable_msdc_stages = deformable_stages
+        self.deformable_offset_scale = float(deformable_offset_scale)
+        self.deformable_msdc_modulation = bool(deformable_msdc_modulation)
         # EUCB 固定使用 3x3 depth-wise convolution。
         # eucb_ks//2 在下面等于 1，所以 EUCB 内卷积保持尺寸；真正的 2 倍放大发生在 nn.Upsample。
         eucb_ks = 3  # kernel size for eucb
         # 最深层 d4 只做 MSCAM 细化，不需要先上采样；MSCB 保持 channels[0]。
         self.mscb4 = MSCBLayer(channels[0], channels[0], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation,
+                               deformable=self.deformable_msdc and 'd4' in self.deformable_msdc_stages,
+                               offset_scale=self.deformable_offset_scale,
+                               modulation=self.deformable_msdc_modulation)
         # d4 不与 skip 融合，因为 x 本身就是编码器最深层 x4；先在原始最低分辨率上做注意力和多尺度细化，
         # 可以用较低空间计算量获得最强语义表示，再开始逐级恢复尺寸。
 
@@ -905,7 +1064,10 @@ class EMCAD(nn.Module):
         # 融合 skip 后执行第三级 MSCAM 中的 MSCB，通道保持 channels[1]。
         self.mscb3 = MSCBLayer(channels[1], channels[1], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation,
+                               deformable=self.deformable_msdc and 'd3' in self.deformable_msdc_stages,
+                               offset_scale=self.deformable_offset_scale,
+                               modulation=self.deformable_msdc_modulation)
 
         # 第二级上采样：channels[1] -> channels[2]，空间尺寸再乘 2。
         # eucb2 输出通道与 x2/skip[1] 完全一致，才能让 LGAG 两路投影和后续逐元素加法成立。
@@ -916,7 +1078,10 @@ class EMCAD(nn.Module):
         # 第二级 MSCB 细化，通道保持 channels[2]。
         self.mscb2 = MSCBLayer(channels[2], channels[2], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation,
+                               deformable=self.deformable_msdc and 'd2' in self.deformable_msdc_stages,
+                               offset_scale=self.deformable_offset_scale,
+                               modulation=self.deformable_msdc_modulation)
 
         # 第一级上采样：channels[2] -> channels[3]，到达编码器最高分辨率特征层。
         # “第一级”仍只到 encoder stage1 的 1/4 尺度；解码器内部没有继续到 1/2 或原图尺度。
@@ -927,7 +1092,10 @@ class EMCAD(nn.Module):
         # 第一级 MSCB 输出解码器最高分辨率特征 d1。
         self.mscb1 = MSCBLayer(channels[3], channels[3], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation,
+                               deformable=self.deformable_msdc and 'd1' in self.deformable_msdc_stages,
+                               offset_scale=self.deformable_offset_scale,
+                               modulation=self.deformable_msdc_modulation)
 
         # 四个解码级分别拥有独立 CAB；权重通道与本级特征一致。
         # CAB4/3/2/1 的参数不能共享，因为它们的通道数通常分别为 C4/C3/C2/C1，卷积 shape 不同。
@@ -942,6 +1110,12 @@ class EMCAD(nn.Module):
         # SAB 不依赖通道数，因此四个解码级共享同一个 7x7 空间注意力模块及其参数。
         # 同一个 Module 多次调用在 PyTorch 中是合法的：每次根据当前输入重新计算权重图，但学习参数是同一份。
         self.sab = SAB()
+
+        # MSCB 的递归初始化会覆盖 MSDC 内偏移预测器的零初始化；在整个
+        # EMCAD 构造完成后再次复位，确保启用模块时从规则采样开始。
+        for module in self.modules():
+            if isinstance(module, DeformableDepthwiseConv2d):
+                module.reset_offset_parameters()
 
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
     def forward(self, x, skips):

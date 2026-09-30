@@ -53,6 +53,12 @@ RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录数据集和输入尺寸。
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 
+DEFORMABLE_MSDC=1
+DEFORMABLE_MSDC_STAGES="d2,d1"
+DEFORMABLE_OFFSET_SCALE=1.0
+DEFORMABLE_MSDC_MODULATION=0
+
+
 # RUN_ID会注入Python进程环境，PID文件位于已cd到的项目根目录。
 RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_${BATCH_SIZE}_seed${seed}_maxepochs_${MAX_EPOCHS}_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
@@ -61,6 +67,7 @@ echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] VOLUME_PATH=${VOLUME_PATH}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"  | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
+
 
 
 # VOLUME_PATH不存在时右侧错误块执行并返回退出码1，不会启动后台测试。
@@ -74,6 +81,10 @@ nohup env RUN_ID="${RUN_ID}"   python test_synapse.py \
   --img_size "${IMG_SIZE}" \
   --list_dir "${LIST_PATH}" \
    --seed "${SEED}" \
+   --deformable_msdc 1 \
+  --deformable_msdc_stages d2,d1 \
+  --deformable_offset_scale 1.0 \
+  --deformable_msdc_modulation 0
   >> "${LOG_FILE}" 2>&1 &
 
 # $!取得最近后台任务PID并写入与RUN_ID同名文件；成功启动后脚本本身随即结束。

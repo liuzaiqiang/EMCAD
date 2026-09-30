@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser()
 
 # 完整体测试目录；默认名带 _new，与训练入口默认 volume_path 不同，需人工确认划分一致。
 parser.add_argument('--volume_path', type=str,
-                    default='../data/synapse/test_vol_h5_new', help='root dir for validation volume data')
+                    default='../data/Synapse/test_vol_h5', help='root dir for validation volume data')
 # 数据集键用于查询后面的 dataset_config；当前只支持 Synapse。
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
@@ -53,7 +53,7 @@ parser.add_argument('--num_classes', type=int,
                     default=9, help='output channel of network')
 # 列表目录应包含 test_vol.txt，每行对应一个 H5 病例名。
 parser.add_argument('--list_dir', type=str,
-                    default='./lists/lists_Synapse', help='list dir')
+                    default='../data/Synapse/lists/lists_Synapse', help='list dir')
 
 # network related parameters
 # 编码器必须与训练时一致，否则 state_dict 的参数名/形状通常无法严格加载。
@@ -94,6 +94,14 @@ parser.add_argument('--fusion_mode', type=str, default='p1',
                     help='must match the training checkpoint fusion mode')
 parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
                     help='must match the training output directory naming')
+parser.add_argument('--deformable_msdc', type=int, default=0, choices=[0, 1],
+                    help='enable deformable depthwise convolution in selected MSDC stages')
+parser.add_argument('--deformable_msdc_stages', type=str, default='d2,d1',
+                    help='comma-separated decoder stages, subset of d4,d3,d2,d1')
+parser.add_argument('--deformable_offset_scale', type=float, default=1.0,
+                    help='maximum absolute offset in feature-map pixels')
+parser.add_argument('--deformable_msdc_modulation', type=int, default=0, choices=[0, 1],
+                    help='enable the optional modulation mask')
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -324,6 +332,11 @@ if __name__ == "__main__":
                                  f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
     if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
         snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
+    if args.deformable_msdc:
+        snapshot_path += '_dmsdc_{}_scale{}_mod{}'.format(
+            args.deformable_msdc_stages.replace(',', '-'),
+            args.deformable_offset_scale,
+            args.deformable_msdc_modulation)
 
 
 
@@ -332,7 +345,11 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     fusion_mode=args.fusion_mode)
+                     fusion_mode=args.fusion_mode,
+                     deformable_msdc=bool(args.deformable_msdc),
+                     deformable_msdc_stages=args.deformable_msdc_stages,
+                     deformable_offset_scale=args.deformable_offset_scale,
+                     deformable_msdc_modulation=bool(args.deformable_msdc_modulation))
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

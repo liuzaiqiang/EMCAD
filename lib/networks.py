@@ -62,7 +62,8 @@ class EMCADNet(nn.Module):
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
                  activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
-                 fusion_mode='p1'):
+                 fusion_mode='p1', deformable_msdc=False, deformable_msdc_stages='d2,d1',
+                 deformable_offset_scale=1.0, deformable_msdc_modulation=False):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
         self.fusion_mode = str(fusion_mode)
@@ -203,7 +204,11 @@ class EMCADNet(nn.Module):
         # 需要区分论文描述与当前调用默认值：本构造函数的 activation 默认实参是 'relu'，实际建层始终以传入字符串为准。
         # 这里只“创建”解码器各层，尚未流过任何图像；真正的张量计算发生在 forward 的 self.decoder(...) 调用中。
         self.decoder = EMCAD(channels=channels, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                             dw_parallel=dw_parallel, add=add, lgag_ks=lgag_ks, activation=activation)
+                             dw_parallel=dw_parallel, add=add, lgag_ks=lgag_ks, activation=activation,
+                             deformable_msdc=deformable_msdc,
+                             deformable_msdc_stages=deformable_msdc_stages,
+                             deformable_offset_scale=deformable_offset_scale,
+                             deformable_msdc_modulation=deformable_msdc_modulation)
 
         # 打印仅 EMCAD 解码器的参数量，便于核对轻量化设计。解码器参数统计不包含编码器和下面的四个 segmentation head。
         print('Model %s created, param count: %d' % ('EMCAD decoder: ',
@@ -231,6 +236,18 @@ class EMCADNet(nn.Module):
             self.reliability_head3 = nn.Conv2d(num_classes, 1, 1)
             self.reliability_head2 = nn.Conv2d(num_classes, 1, 1)
             self.reliability_head1 = nn.Conv2d(num_classes, 1, 1)
+
+    # 创新点：汇总可变形 MSDC 的偏移诊断量，不参与前向计算或损失。时间：20260929
+    def deformable_offset_statistics(self):
+        """Return the latest per-branch offset statistics for mechanism diagnostics."""
+        statistics = {}
+        for module_name, module in self.decoder.named_modules():
+            if hasattr(module, 'last_offset_stats') and module.last_offset_stats is not None:
+                statistics[module_name] = {
+                    key: float(value.detach().cpu()) if torch.is_tensor(value) else float(value)
+                    for key, value in module.last_offset_stats.items()
+                }
+        return statistics
 
     # ------------------------------ forward 契约 ------------------------------
     # 输入：四维 PyTorch 图像张量 x=[B,C,H,W]。代码专门适配 C=1，骨干原生适配 C=3。

@@ -80,7 +80,7 @@ def parse_args():
     # ACDC 根目录，预期含 train/、valid/ 等子目录。
     parser.add_argument("--root_path", default="./data/ACDC")
     # 列表目录，至少需要 train.txt 和 valid.txt。
-    parser.add_argument("--list_dir", default="./data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default="../data/ACDC/lists/lists_ACDC")
     # 所有 ACDC 实验目录的根位置。
     parser.add_argument("--output_dir", default="./model_pth/ACDC")
     # 单次实验名；None 时主函数用时间戳自动生成。
@@ -109,6 +109,10 @@ def parse_args():
     parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
     parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
     parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
+    parser.add_argument("--deformable_msdc", type=int, default=0, choices=[0, 1])
+    parser.add_argument("--deformable_msdc_stages", type=str, default="d2,d1")
+    parser.add_argument("--deformable_offset_scale", type=float, default=1.0)
+    parser.add_argument("--deformable_msdc_modulation", type=int, default=0, choices=[0, 1])
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(

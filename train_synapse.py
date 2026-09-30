@@ -35,14 +35,14 @@ from trainer import trainer_synapse
 parser = argparse.ArgumentParser()
 
 # 训练数据根目录：每个 Synapse 二维切片通常对应一个 .npz 文件。
-parser.add_argument('--root_path', type=str, default='../data/synapse/train_npz', help='root dir for data')
+parser.add_argument('--root_path', type=str, default='../data/Synapse/train_npz', help='root dir for data')
 # 完整体数据目录：验证/测试按病例读取 .npy.h5，   而不是逐切片 .npz。
-parser.add_argument('--volume_path', type=str, default='../data/synapse/test_vol_h5',
+parser.add_argument('--volume_path', type=str, default='../data/Synapse/test_vol_h5',
                     help='root dir for validation volume data')
 # 数据集键名稍后用于查询 dataset_config 和 trainer 映射表；当前只注册 Synapse。
 parser.add_argument('--dataset', type=str, default='Synapse', help='experiment_name')
 # 划分列表目录应包含 train.txt、test_vol.txt 等文本清单。
-parser.add_argument('--list_dir', type=str, default='./lists/lists_Synapse', help='list dir')
+parser.add_argument('--list_dir', type=str, default='../data/Synapse/lists/lists_Synapse', help='list dir')
 # 多分类输出通道数；9=背景(0)+8个器官(1..8)，须与标签编号一致。
 parser.add_argument('--num_classes', type=int, default=9, help='output channel of network')
 # network related parameters
@@ -82,6 +82,14 @@ parser.add_argument('--fusion_loss_weight', type=float, default=0.0,
                     help='weight of the fused-output CE+Dice auxiliary loss; keep 0 for the original baseline')
 parser.add_argument('--reliability_loss_weight', type=float, default=1.0,
                     help='pixel reliability BCE weight used only by pixel_reliability')
+parser.add_argument('--deformable_msdc', type=int, default=0, choices=[0, 1],
+                    help='enable deformable depthwise convolution in selected MSDC stages')
+parser.add_argument('--deformable_msdc_stages', type=str, default='d2,d1',
+                    help='comma-separated decoder stages, subset of d4,d3,d2,d1')
+parser.add_argument('--deformable_offset_scale', type=float, default=1.0,
+                    help='maximum absolute offset in feature-map pixels')
+parser.add_argument('--deformable_msdc_modulation', type=int, default=0, choices=[0, 1],
+                    help='enable the optional modulation mask')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。
@@ -222,6 +230,11 @@ if __name__ == "__main__":
     snapshot_path = os.path.join("model_pth", exp_name)
     if args.fusion_mode != 'p1' or args.fusion_loss_weight != 0:
         snapshot_path += '_fusion_{}_fw{}'.format(args.fusion_mode, args.fusion_loss_weight)
+    if args.deformable_msdc:
+        snapshot_path += '_dmsdc_{}_scale{}_mod{}'.format(
+            args.deformable_msdc_stages.replace(',', '-'),
+            args.deformable_offset_scale,
+            args.deformable_msdc_modulation)
 
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
@@ -232,7 +245,11 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     fusion_mode=args.fusion_mode)
+                     fusion_mode=args.fusion_mode,
+                     deformable_msdc=bool(args.deformable_msdc),
+                     deformable_msdc_stages=args.deformable_msdc_stages,
+                     deformable_offset_scale=args.deformable_offset_scale,
+                     deformable_msdc_modulation=bool(args.deformable_msdc_modulation))
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()
