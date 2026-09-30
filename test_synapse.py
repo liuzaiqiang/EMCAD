@@ -44,7 +44,7 @@ parser = argparse.ArgumentParser()
 
 # 完整体测试目录；默认名带 _new，与训练入口默认 volume_path 不同，需人工确认划分一致。
 parser.add_argument('--volume_path', type=str,
-                    default='../data/synapse/test_vol_h5_new', help='root dir for validation volume data')
+                    default='../data/Synapse/test_vol_h5', help='root dir for validation volume data')
 # 数据集键用于查询后面的 dataset_config；当前只支持 Synapse。
 parser.add_argument('--dataset', type=str,
                     default='Synapse', help='experiment_name')
@@ -53,7 +53,7 @@ parser.add_argument('--num_classes', type=int,
                     default=9, help='output channel of network')
 # 列表目录应包含 test_vol.txt，每行对应一个 H5 病例名。
 parser.add_argument('--list_dir', type=str,
-                    default='./lists/lists_Synapse', help='list dir')
+                    default='../data/Synapse/lists/lists/lists_Synapse', help='list dir')
 
 # network related parameters
 # 编码器必须与训练时一致，否则 state_dict 的参数名/形状通常无法严格加载。
