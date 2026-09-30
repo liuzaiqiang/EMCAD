@@ -83,7 +83,6 @@ PARAM_NAMES=(
   for name in "${PARAM_NAMES[@]}"; do
     printf '[INFO] %-24s=%s\n' "$name" "${!name}"
   done
-  echo "---------------------------ready to run---------------------------------"
 } | tee -a "${LOG_FILE}"
 echo "---------------------------ready to train---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
 

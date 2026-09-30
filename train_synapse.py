@@ -42,7 +42,7 @@ parser.add_argument('--volume_path', type=str, default='../data/synapse/test_vol
 # 数据集键名稍后用于查询 dataset_config 和 trainer 映射表；当前只注册 Synapse。
 parser.add_argument('--dataset', type=str, default='Synapse', help='experiment_name')
 # 划分列表目录应包含 train.txt、test_vol.txt 等文本清单。
-parser.add_argument('--list_dir', type=str, default='./lists/lists_Synapse', help='list dir')
+parser.add_argument('--list_dir', type=str, default='../data/Synapse/lists/lists_Synapse', help='list dir')
 # 多分类输出通道数；9=背景(0)+8个器官(1..8)，须与标签编号一致。
 parser.add_argument('--num_classes', type=int, default=9, help='output channel of network')
 # network related parameters

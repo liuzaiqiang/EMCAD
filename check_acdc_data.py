@@ -58,7 +58,7 @@ def main():
     # root_path 下应包含 train、valid、test 三个数据子目录。
     parser.add_argument("--root_path", default="./data/ACDC")
     # list_dir 下应包含 train.txt、valid.txt、test.txt。
-    parser.add_argument("--list_dir", default="./data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default="../data/ACDC/lists/lists_ACDC")
     # 解析用户传入参数，未提供时使用上面的项目默认值。
     args = parser.parse_args()
 
