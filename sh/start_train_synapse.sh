@@ -36,7 +36,9 @@ BASE_LR=1e-4
 
 
 num_classes=9
+# 当前项目支持 pvt_v2_b0 pvt_v2_b1 pvt_v2_b2 pvt_v2_b3 pvt_v2_b4 pvt_v2_b5 resnet18 resnet34 resnet50 resnet101 resnet152
 encoder=pvt_v2_b2
+#它控制 MSCB 模块中间隐藏通道的扩展倍数。
 expansion_factor=2
 kernel_sizes=[1, 3, 5]
 lgag_ks=3
@@ -50,9 +52,9 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVIS
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
-LIST_DIR="${PROJECT_DIR}/./data/Synapse/lists/lists_Synapse"
-ROOT_PATH="./data/Synapse/train_npz"
-VOLUME_PATH="./data/Synapse/test_vol_h5"
+LIST_DIR="${PROJECT_DIR}/../data/Synapse/lists/lists_Synapse"
+ROOT_PATH="../data/Synapse/train_npz"
+VOLUME_PATH="../data/Synapse/test_vol_h5"
 
 
 PARAM_NAMES=(
