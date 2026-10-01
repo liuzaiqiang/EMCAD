@@ -111,6 +111,14 @@ parser.add_argument('--test_save_dir', type=str, default='predictions', help='sa
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 固定 Python、NumPy、PyTorch 和 CUDA 随机状态。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
+
+parser.add_argument(
+    "--checkpoint",
+    type=str,
+    required=True,
+    help="best.pth 的完整路径",
+)
+
 # 解析命令行并生成全局 args。
 args = parser.parse_args()
 
@@ -312,8 +320,8 @@ if __name__ == "__main__":
     snapshot_path = snapshot_path + '_s' + str(args.seed) if args.seed != 1234 else snapshot_path
     """
 
-    snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}",
-                                 f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
+    #snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}",
+                              #   f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
 
 
 
@@ -325,11 +333,14 @@ if __name__ == "__main__":
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 
-    # 下方是历史 checkpoint 路径示例，整行已注释，不参与运行。
+    # 下方是历史 checkpoint 路径示例
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
-
+    
     # 首选加载训练过程中按验证Dice选择的 best.pth。
-    snapshot = os.path.join(snapshot_path, 'best.pth')
+    #snapshot = os.path.join(snapshot_path, 'best.pth')
+    
+    snapshot = args.checkpoint
+
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
     print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)
     # 若 best.pth 不存在，则回退到零基编号的最后 epoch 文件，例如 epoch_299.pth。
@@ -337,7 +348,10 @@ if __name__ == "__main__":
     # torch.load 读取 state_dict，load_state_dict 默认 strict=True；没有 map_location，要求当前 CUDA 环境兼容。
     model.load_state_dict(torch.load(snapshot))
     # 以正斜杠切分路径得到内层目录名；在纯 Windows 反斜杠路径上此写法需要留意。
-    snapshot_name = snapshot_path.split('/')[-1]
+    # checkpoint 现在由 --checkpoint 直接指定；从实际文件路径取得其目录和文件名。
+    # 这样测试端不再依赖旧版根据训练参数自动拼接 snapshot_path 的逻辑。
+    snapshot_path = os.path.dirname(os.path.abspath(snapshot))
+    snapshot_name = os.path.splitext(os.path.basename(snapshot))[0]
 
     # 测试日志按实验标识放入 test_log/test_log_<exp>。
     log_folder = 'test_log/test_log_' + args.exp

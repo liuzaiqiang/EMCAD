@@ -207,7 +207,15 @@ if __name__ == "__main__":
 
     # 简化后的snapshot_path Windows/Linux 通用
     # exp_name = f"run_seed{args.seed}"
-    exp_name = f"{args.dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}"
+    exp_name = os.path.join(
+        f"{args.dataset}",
+        f"encoder_{args.encoder}",
+        f"img_size_{args.img_size}",
+        f"seed{args.seed}",
+        f"batch_size_{args.batch_size}",
+        f"lr_{args.base_lr}",
+        f"maxEpochs_{args.max_epochs}",
+    )
     snapshot_path = os.path.join("model_pth", exp_name)
 
     if not os.path.exists(snapshot_path):

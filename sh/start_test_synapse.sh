@@ -15,12 +15,10 @@ mkdir -p "${LOG_DIR}"
 
 
 # Synapse测试脚本使用固定conda安装位置和环境名，不读取外部覆盖值。
-#CONDA_BASE="/base/mambaforge"
-#CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
-
-
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+CONDA_BASE="/base/mambaforge"
+CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+#CONDA_BASE="/home/mlf/anaconda3"
+#CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
 
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
@@ -41,10 +39,13 @@ RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 
 
-RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_seed${seed}_maxepochs_${TS}_RAND${RAND}"
+RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
+VOLUME_PATH="./data/Synapse/test_vol_h5"
+LIST_DIR="./data/Synapse/lists/lists_Synapse"
 
+CHECKPOINT="./model_pth/Synapse/encoder_pvt_v2_b2/img_size_224/seed2222/batch_size_16/lr_0.0001/maxEpochs_400/best.pth"
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -61,7 +62,10 @@ PARAM_NAMES=(
   RUN_ID
   PID_FILE
 
-  NUM_WORKERS
+  VOLUME_PATH
+  LIST_DIR
+
+  CHECKPOINT
 )
 
 {
@@ -81,6 +85,9 @@ nohup env RUN_ID="${RUN_ID}"   python -u test_synapse.py \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
   --seed "${SEED}" \
+  --volume_path "${VOLUME_PATH}" \
+  --list_dir "${LIST_DIR}" \
+  --checkpoint "${CHECKPOINT}" \
   >> "${LOG_FILE}" 2>&1 &
 
 
