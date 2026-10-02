@@ -69,6 +69,7 @@ esac
 
 # DATA_ROOT 默认指向预处理后的 BUSI target 目录；CKPT 不设默认权重，必须由调用者明确提供。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/busi/target}"
+# 默认在 BUSI 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 
 # 拒绝其他数据集名，防止目录结构或类别定义与 test_busi.py 的 BUSI 评估逻辑不一致。

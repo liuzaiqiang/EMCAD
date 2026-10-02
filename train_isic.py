@@ -8,6 +8,7 @@ import sys
 from datetime import datetime
 # Path 构造数据集、清单和运行目录。
 from pathlib import Path
+from lib.experiment_paths import make_experiment_dir
 
 # ISIC 训练复用 train_polyp 的模型、损失、优化器和完整训练循环。
 import train_polyp as _base
@@ -90,22 +91,6 @@ def _parse_args():
             "ISIC training requires RGB input; "
             # 错误正文第二段。
             "remove --grayscale"
-        )
-
-    # 未给出运行名时生成包含版本和秒级时间戳的唯一名称。
-    if args.run_name is None:
-        # 组合运行名。
-        args.run_name = (
-            # 格式模板。
-            "train_ISIC_{}_{}".format(
-                # 数据集版本。
-                args.dataset_name,
-                # 当前本地时间。
-                datetime.now().strftime(
-                    # 文件名安全时间格式。
-                    "%Y-%m-%d_%H%M%S"
-                ),
-            )
         )
 
     # 准备后的具体版本根目录。
@@ -209,23 +194,8 @@ def _parse_args():
             )
         )
 
-    # 与 train_polyp.main 最终写入位置一致地预先构造运行目录。
-    run_dir = (
-        # 输出根绝对路径。
-            Path(args.output_dir).resolve()
-            # 数据集版本子目录。
-            / args.dataset_name
-            # 当前运行名子目录。
-            / args.run_name
-    )
-
-    # 创建运行目录及父目录；已存在时不报错。
-    run_dir.mkdir(
-        # 递归创建。
-        parents=True,
-        # 允许存在。
-        exist_ok=True,
-    )
+    # 统一输出层级并自动避让同一秒内的重复目录。
+    run_dir = Path(make_experiment_dir(args, "ISIC"))
 
     # 把实际划分 CSV 复制进实验目录，实现训练结果与样本名单绑定。
     shutil.copy2(

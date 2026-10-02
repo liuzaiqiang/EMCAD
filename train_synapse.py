@@ -9,6 +9,7 @@
 
 # argparse 负责把命令行参数（例如 --batch_size 6）转换为 args 对象。
 import argparse
+import json
 # datetime 用于输出当前训练入口启动到模型创建完成时的系统时间。
 from datetime import datetime
 # logging 在本入口中虽被导入，但实际日志配置位于 trainer.py；这是保留的工程导入。
@@ -28,6 +29,7 @@ import torch.backends.cudnn as cudnn
 
 # EMCADNet 封装“编码器 + EMCAD 解码器 + 四个分割头”；结构细节在 lib/networks.py。
 from lib.networks import EMCADNet
+from lib.experiment_paths import make_experiment_dir
 # trainer_synapse 承担 DataLoader、损失、反向传播、验证和 checkpoint 保存。
 from trainer import trainer_synapse
 
@@ -217,19 +219,10 @@ if __name__ == "__main__":
 
     # snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
 
-    # 简化后的snapshot_path Windows/Linux 通用
-    # exp_name = f"run_seed{args.seed}"
-    exp_name = os.path.join(
-        f"{args.dataset}", f"encoder_{args.encoder}", f"img_size_{args.img_size}",
-        f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
-        f"maxEpochs_{args.max_epochs}")
-    snapshot_path = os.path.join("model_pth", exp_name)
-    snapshot_path += '_fusion_{}_fw{}_reliability{}_caa_{}_rs{}'.format(
-        args.fusion_mode, args.fusion_loss_weight, args.reliability_loss_weight,
-        args.caa_mode, args.caa_residual_scale)
-
-    if not os.path.exists(snapshot_path):
-        os.makedirs(snapshot_path)
+    # 统一输出层级并自动避让同一秒内的重复目录；不改变模型或训练流程。
+    snapshot_path = make_experiment_dir(args, "Synapse", output_root="./model_pth")
+    with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
+        json.dump(vars(args), stream, ensure_ascii=False, indent=2)
 
     # 创建完整分割网络：这些参数会继续传入 EMCAD 解码器，决定真正的模型结构。
     # 对 Synapse，num_classes=9，所以四个预测头各输出 9 通道原始 logits；这里不做 softmax。

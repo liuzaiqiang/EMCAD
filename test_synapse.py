@@ -89,6 +89,9 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 监督策略不参与测试前向，却参与 checkpoint 目录名，因此仍需匹配训练命令。
 parser.add_argument('--supervision', type=str,
                     default='mutation', help='loss supervision: mutation, deep_supervision or last_layer')
+# 允许启动脚本直接传入已经选定的 best.pth；为空时保留原有的按训练参数重建路径行为。
+parser.add_argument('--checkpoint', type=str, default='',
+                    help='explicit checkpoint path; empty keeps the reconstructed legacy path')
 parser.add_argument('--fusion_mode', type=str, default='p1',
                     choices=['p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'],
                     help='must match the training checkpoint')
@@ -344,7 +347,8 @@ if __name__ == "__main__":
     # snapshot_path = 'model_pth/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_Synapse224/'+args.encoder+'_EMCAD_wi_normal_dw_parallel_add_Conv2D_cec_cdc1x1_dwc_cs_ef2_k_sizes_1_3_5_ag3g_relu6_up3_relu_to1_3ch_relu_loss2p4_w1_out1_nlrd_mutation_True_cds_False_cds_decoder_FalseRun'+str(run)+'_50k_epo300_bs6_lr0.0001_224_s2222'
 
     # 首选加载训练过程中按验证Dice选择的 best.pth。
-    snapshot = os.path.join(snapshot_path, 'best.pth')
+    # 启动脚本传入 checkpoint 时直接加载该文件；未传入时保留原有的 best.pth 路径推导。
+    snapshot = args.checkpoint if args.checkpoint else os.path.join(snapshot_path, 'best.pth')
     # 打印解析出的 checkpoint 路径，便于发现参数命名不匹配。
     print(">>>>>>snapshot值(包括best.pth要放的位置)：", snapshot)
     # 若 best.pth 不存在，则回退到零基编号的最后 epoch 文件，例如 epoch_299.pth。

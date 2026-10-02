@@ -71,6 +71,8 @@ from utils.acdc_utils import (
 )
 # ACDCdataset 读取训练二维切片；ACDCVolumeDataset 读取/重组验证体；RandomGenerator 做同步增强。
 from utils.dataset_ACDC import ACDCVolumeDataset, ACDCdataset, RandomGenerator
+from lib.model_complexity import log_model_complexity
+from lib.experiment_paths import make_experiment_dir
 
 
 # 集中定义全部训练参数；函数返回 Namespace，不在 import 阶段直接解析命令行。
@@ -307,17 +309,8 @@ def main():
         # 防止后面 model.to(device) 才抛出更难读的底层异常。
         raise RuntimeError("CUDA was requested but is unavailable")
 
-    # 未指定 run_name 时用当前时间生成唯一实验目录名。
-    if args.run_name is None:
-        # 时间格式精确到秒；同一秒并发启动仍可能重名。
-        args.run_name = "acdc_{}".format(datetime.now().strftime("%Y%m%d_%H%M%S"))
-    args.run_name += "_fusion_{}_fw{}_reliability{}_caa_{}_rs{}".format(
-        args.fusion_mode, args.fusion_loss_weight, args.reliability_loss_weight,
-        args.caa_mode, args.caa_residual_scale)
-    # 本次实验目录=<output_dir>/<run_name>。
-    snapshot_path = os.path.join(args.output_dir, args.run_name)
-    # 递归创建目录；已存在时复用。
-    os.makedirs(snapshot_path, exist_ok=True)
+    # 统一输出层级并自动避让同一秒内的重复目录；不改变模型或训练流程。
+    snapshot_path = make_experiment_dir(args, "ACDC")
 
     # 配置文件日志，写入本实验 train.log。
     logging.basicConfig(
@@ -397,6 +390,13 @@ def main():
         model = nn.DataParallel(model, device_ids=list(range(args.n_gpu)))
 
     # 交叉熵负责像素级 4 类分类。
+    # ACDC 使用单通道训练切片；统计只做一次探测，不改变训练逻辑。
+    log_model_complexity(
+        model,
+        (1, 1, args.img_size, args.img_size),
+        output_path=os.path.join(snapshot_path, "model_complexity.txt"),
+    )
+
     ce_loss = CrossEntropyLoss()
     # DiceLoss 内部 softmax，并对背景/RV/MYO/LV 四类求平均。
     dice_loss = DiceLoss(ACDC_NUM_CLASSES)

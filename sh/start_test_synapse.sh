@@ -33,6 +33,15 @@ export CUDA_VISIBLE_DEVICES=0
 IMG_SIZE=224
 DATASET="Synapse"
 
+# 默认在Synapse对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
+CKPT="${CKPT:-}"
+
+if [[ -z "${CKPT}" || ! -f "${CKPT}" ]]; then
+  echo "[ERROR] CKPT is missing or does not exist: ${CKPT}"
+  echo "[ERROR] Example: CKPT=/absolute/path/to/best.pth bash sh/start_test_synapse.sh"
+  exit 1
+fi
+
 
 
 SEED=2222
@@ -41,7 +50,7 @@ RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 
 
-RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_seed${seed}_maxepochs_${TS}_RAND${RAND}"
+RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_batchSize_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
 # 0=关闭，1=开启；默认双关闭。
@@ -69,7 +78,6 @@ PARAM_NAMES=(
   PROJECT_DIR
   LOG_DIR
   CUDA_VISIBLE_DEVICES
-  SEED
   DATASET
   IMG_SIZE
   TS
@@ -77,9 +85,7 @@ PARAM_NAMES=(
   LOG_FILE
   RUN_ID
   PID_FILE
-
   NUM_WORKERS
-
   FUSION_MODE
   FUSION_LOSS_WEIGHT
   RELIABILITY_LOSS_WEIGHT
@@ -103,8 +109,8 @@ test -d "${VOLUME_PATH}" || { echo "[ERROR] VOLUME_PATH not found: ${VOLUME_PATH
 # stdout追加日志且stderr合并；末尾&转入后台。此脚本未显式写< /dev/null，stdin处理由nohup实现决定。
 nohup env RUN_ID="${RUN_ID}"   python -u test_synapse.py \
   --dataset "${DATASET}" \
+  --checkpoint "${CKPT}" \
   --img_size "${IMG_SIZE}" \
-  --seed "${SEED}" \
   --fusion_mode "${FUSION_MODE}" \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \

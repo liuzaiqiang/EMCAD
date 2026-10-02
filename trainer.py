@@ -11,7 +11,9 @@
 
 # argparse 当前未被直接使用，属于从通用训练模板保留的工程导入。
 import argparse
-# logging 同时把训练过程写入 log.txt 并输出到终端。
+import csv
+import json
+# logging 同时把训练过程写入 train.log 并输出到终端。
 import logging
 # os 用于拼接 checkpoint 与 TensorBoard 日志路径。
 import os
@@ -47,11 +49,12 @@ from torch.cuda.amp import GradScaler, autocast
 from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
+from lib.model_complexity import log_model_complexity
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
 # 注意：split 名为 test_vol，是否属于“验证集”取决于你的实际列表划分；若它是官方测试集，每个 epoch 用它挑 best.pth 会造成测试集参与模型选择。这里仅忠实说明现有行为，不改逻辑。
-def inference(args, model, best_performance):
+def inference(args, model, best_performance, validation_csv=None, epoch=None):
     # 用完整体目录和 test_vol.txt 创建病例级数据集；单样本通常 image/label=[D,H,W]。
     db_test = Synapse_dataset(base_dir=args.volume_path, split="test_vol",
                               list_dir=args.list_dir, nclass=args.num_classes)
@@ -92,6 +95,14 @@ def inference(args, model, best_performance):
     # 再沿类别维求均值，得到单个 macro mean Dice，用作 checkpoint 选择指标。
     # 随后，代码通过 np.mean(metric_list, axis=0) 对该数组沿类别维度再次求均值，得到所有前景类别的总体宏平均 Dice，用作模型 checkpoint 选择的依据。
     performance = np.mean(metric_list, axis=0)
+    if validation_csv is not None and epoch is not None:
+        file_exists = os.path.exists(validation_csv)
+        with open(validation_csv, "a", newline="", encoding="utf-8") as stream:
+            fieldnames = ["epoch", "mean_dice"]
+            writer = csv.DictWriter(stream, fieldnames=fieldnames)
+            if not file_exists:
+                writer.writeheader()
+            writer.writerow({"epoch": epoch, "mean_dice": float(performance)})
     # 提前判断并更新历史最优值，使后续日志语义准确  2026-09-11凌晨添加
     if best_performance <= performance:
         best_performance = performance
@@ -103,8 +114,8 @@ def inference(args, model, best_performance):
 
 # Synapse 训练主函数：args 提供配置，model 是已创建的 EMCADNet，snapshot_path 是本次实验目录。
 def trainer_synapse(args, model, snapshot_path):
-    # 配置文件日志；每条记录带时分秒和毫秒，写入当前实验目录的 log.txt。
-    logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
+    # 配置文件日志；每条记录带时分秒和毫秒，写入当前实验目录的 train.log。
+    logging.basicConfig(filename=snapshot_path + "/train.log", level=logging.INFO,
                         # message 是调用 logging.info 传入的正文。
                         format='[%(asctime)s.%(msecs)03d] %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
@@ -112,6 +123,15 @@ def trainer_synapse(args, model, snapshot_path):
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     # 把全部命令行配置写入日志，这是复现实验时最基本的配置快照。
     logging.info(str(args))
+    # Synapse 的模型已由 train_synapse.py 构建；这里是统一训练日志入口。
+    with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
+        json.dump(vars(args), stream, ensure_ascii=False, indent=2)
+    validation_csv = os.path.join(snapshot_path, "validation_metrics.csv")
+    log_model_complexity(
+        model,
+        (1, 1, args.img_size, args.img_size),
+        output_path=os.path.join(snapshot_path, "model_complexity.txt"),
+    )
     # 缓存基础学习率，后面创建优化器并在每次迭代写回参数组。
     base_lr = args.base_lr
     # 缓存类别总数；9 包含背景，将用于构造多类 DiceLoss。
@@ -335,7 +355,11 @@ def trainer_synapse(args, model, snapshot_path):
         torch.save(model.state_dict(), save_mode_path)
 
         # 在完整体数据上计算宏平均 Dice；函数内部会执行 model.eval()。
-        performance = inference(args, model, best_performance)
+        performance = inference(
+            args, model, best_performance,
+            validation_csv=validation_csv,
+            epoch=epoch_num + 1,
+        )
         # 重要的现有代码行为：本函数只在进入 epoch 循环前调用过一次 model.train()，
         # inference 后没有在下一 epoch 开头再次切回 train；因此第 2 个 epoch 起模型保持 eval 模式。
         # 这会影响 BatchNorm/Dropout，但依照用户约束这里只解释，不修改该逻辑。——已经修改
@@ -356,9 +380,9 @@ def trainer_synapse(args, model, snapshot_path):
 
         # epoch_num 从 0 开始，但判断用 epoch_num+1，所以第 50、100、150...轮触发。
         if (epoch_num + 1) % save_interval == 0:
-            # 文件名使用零基 epoch_num，因此第 50 轮会保存为 epoch_49.pth。
+            # 文件名使用一基轮次，因此第 50 轮保存为 epoch_50.pth。
             save_mode_path = os.path.join(
-                snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+                snapshot_path, 'epoch_' + str(epoch_num + 1) + '.pth')
             # 写入阶段性模型权重。
             torch.save(model.state_dict(), save_mode_path)
             # 记录阶段性文件位置。
@@ -366,9 +390,9 @@ def trainer_synapse(args, model, snapshot_path):
 
         # 最后一个 epoch 时再次确保保存最终权重；默认 300 轮对应 epoch_num=299。
         if epoch_num >= max_epoch - 1:
-            # 最终文件名同样采用零基编号，例如 epoch_299.pth。
+            # 最终文件名同样采用一基编号，例如 epoch_300.pth。
             save_mode_path = os.path.join(
-                snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+                snapshot_path, 'epoch_' + str(epoch_num + 1) + '.pth')
             # 保存最终状态；若刚好也命中 save_interval，可能对同一文件写两次。
             torch.save(model.state_dict(), save_mode_path)
             # 写入最终保存日志。

@@ -53,6 +53,8 @@ from utils.polyp_utils import (
     # 论文结构损失及多头监督组合。
     supervised_structure_loss,
 )
+from lib.model_complexity import log_model_complexity
+from lib.experiment_paths import make_experiment_dir
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -747,25 +749,14 @@ def main():
             )
         )
 
-    if args.run_name is None:
-        args.run_name = (
-            "train_Polyp_{}_{}".format(
-                args.dataset_name,
-                datetime.now().strftime(
-                    "%Y-%m-%d_%H%M%S"
-                ),
-            )
-        )
-
-    run_dir = os.path.abspath(
-        os.path.join(
-            args.output_dir,
-            args.dataset_name,
-            args.run_name,
-        )
-    )
-
-    os.makedirs(run_dir, exist_ok=True)
+    # BUSI/ISIC 复用本入口的训练循环；根据数据集名选择统一的顶层目录。
+    # 这里只改变保存位置，不改变模型、损失或训练计算。
+    output_family = {
+        "BUSI": "BUSI",
+        "ISIC2017": "ISIC",
+        "ISIC2018": "ISIC",
+    }.get(args.dataset_name, "Polyp")
+    run_dir = make_experiment_dir(args, output_family)
 
     logging.basicConfig(
         filename=os.path.join(
@@ -867,6 +858,13 @@ def main():
             parameter.numel()
             for parameter in model.parameters()
         ),
+    )
+
+    # Polyp、BUSI 和 ISIC 共用此入口；复杂度统计只观察已构建模型一次。
+    log_model_complexity(
+        model,
+        (1, 3, args.img_size, args.img_size),
+        output_path=os.path.join(run_dir, "model_complexity.txt"),
     )
 
     optimizer = torch.optim.AdamW(

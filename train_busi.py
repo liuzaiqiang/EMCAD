@@ -10,6 +10,7 @@ import sys
 from datetime import datetime
 # Path 构造 BUSI 数据和输出目录。
 from pathlib import Path
+from lib.experiment_paths import make_experiment_dir
 
 # BUSI 复用 train_polyp 的 EMCAD 模型、二分类损失和训练循环。
 import train_polyp as _base
@@ -182,20 +183,6 @@ def _parse_args():
     # multi-scale training is disabled.
     # 强制关闭 train_polyp 的 0.75/1/1.25 多尺度训练，保持256固定输入。
     args.no_multi_scale = True
-
-    # 未传运行名时生成秒级时间戳名称。
-    if args.run_name is None:
-        # 拼运行名。
-        args.run_name = (
-            # BUSI 前缀。
-            "train_BUSI_{}".format(
-                # 当前时间字符串。
-                datetime.now().strftime(
-                    # 文件名安全格式。
-                    "%Y-%m-%d_%H%M%S"
-                )
-            )
-        )
 
     # 准备数据具体 BUSI 根目录。
     dataset_root = (
@@ -414,40 +401,8 @@ def _parse_args():
         )
     )
 
-    # 最终运行目录与通用训练主函数规则一致。
-    run_dir = (
-        # 输出根绝对路径。
-            Path(args.output_dir).resolve()
-            # BUSI 子目录。
-            / args.dataset_name
-            # 当前运行名。
-            / args.run_name
-    )
-
-    # 已有非空目录意味着可能覆盖旧实验，直接拒绝。
-    if (
-            # 目录存在。
-            run_dir.exists()
-            # 且至少含一个条目。
-            and any(run_dir.iterdir())
-    ):
-        # 报告目标目录。
-        raise FileExistsError(
-            # 错误正文第一段。
-            "BUSI run directory is not "
-            # 第二段。
-            "empty; refusing to overwrite: "
-            # 插入路径。
-            "{}".format(run_dir)
-        )
-
-    # 创建新的运行目录。
-    run_dir.mkdir(
-        # 递归父目录。
-        parents=True,
-        # 空目录已存在时允许。
-        exist_ok=True,
-    )
+    # 统一输出层级并自动避让同一秒内的重复目录。
+    run_dir = Path(make_experiment_dir(args, "BUSI"))
 
     # 复制实际样本清单到运行目录。
     shutil.copy2(

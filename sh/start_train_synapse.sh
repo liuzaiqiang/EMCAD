@@ -29,7 +29,7 @@ export CUDA_VISIBLE_DEVICES=0
 NUM_WORKERS=8
 
 SEED=2222
-MAX_EPOCHS=400
+MAX_EPOCHS=300
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
@@ -81,9 +81,7 @@ PARAM_NAMES=(
   LOG_FILE
   RUN_ID
   PID_FILE
-
   NUM_WORKERS
-
   FUSION_MODE
   FUSION_LOSS_WEIGHT
   RELIABILITY_LOSS_WEIGHT
@@ -108,13 +106,14 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --seed "${SEED}" \
+   --supervision "${SUPERVISION}" \
   --num_workers "${NUM_WORKERS}" \
   --fusion_mode "${FUSION_MODE}" \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
-  --supervision "${SUPERVISION}" \
+
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 
