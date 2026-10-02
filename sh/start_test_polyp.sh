@@ -129,7 +129,13 @@ RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 把实际解析后的路径写入日志；RUN_ID同时显示在终端。
-echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME SPLIT DATA_ROOT CKPT TEST_SAVE_DIR OUTPUT_CSV RUN_ID)
+{
+  echo "[INFO] parameters:"
+  for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
+  echo "---------------------------ready to test----------------------------------"
+} | tee -a "${LOG_FILE}"
+: <<'REMOVED_LOG_LINES'
 echo "[INFO] DATASET_NAME=${DATASET_NAME}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SPLIT=${SPLIT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATA_ROOT=${DATA_ROOT}" | tee -a "${LOG_FILE}" > /dev/null
@@ -139,7 +145,7 @@ echo "[INFO] OUTPUT_CSV=${OUTPUT_CSV}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
-echo "---------------------------ready to test----------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+REMOVED_LOG_LINES
 
 # 单个多行命令块：nohup+后台执行，RUN_ID注入进程环境，-u关闭Python缓冲。
 # --save_probabilities要求同时保存归一化概率图；stdout/stderr追加日志，stdin断开。

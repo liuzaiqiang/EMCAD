@@ -134,7 +134,15 @@ LOG_FILE="${LOG_DIR}/${RUN_ID}__imgSize${IMG_SIZE}_batchSize${BATCH_SIZE}_lr${BA
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 把实际启动配置记录到日志；BUSI多尺度禁用状态也显式写入。
-echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
+PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES DATASET DATASET_NAME IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY CLIP THRESHOLD SCHEDULER MIN_LR NUM_WORKERS DETERMINISTIC SEED VALIDATE_EVERY SAVE_EVERY MAX_TRAIN_BATCHES MAX_VALID_CASES DEVICE ENCODER EXPANSION_FACTOR LGAG_KS ACTIVATION_MSCB SUPERVISION USE_PIXEL_RELIABILITY_FUSION USE_CONTENT_AWARE_ANTIALIAS FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE DATA_ROOT OUTPUT_DIR PRETRAINED_DIR TS RAND LOG_FILE RUN_ID PID_FILE)
+{
+  echo "[INFO] parameters:"
+  for name in "${PARAM_NAMES[@]}"; do
+    printf '[INFO] %-24s=%s\n' "$name" "${!name}"
+  done
+  echo "---------------------------ready to train---------------------------------"
+} | tee -a "${LOG_FILE}"
+ : <<'REMOVED_LOG_LINES'
 echo "[INFO] DATA_ROOT=${DATA_ROOT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] OUTPUT_DIR=${OUTPUT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] IMG_SIZE=${IMG_SIZE}" | tee -a "${LOG_FILE}" > /dev/null
@@ -149,7 +157,7 @@ echo "[INFO] NUM_WORKERS=${NUM_WORKERS} SEED=${SEED}" | tee -a "${LOG_FILE}" > /
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 
 echo "[INFO] RUN_ID=${RUN_ID}"
-echo "---------------------------ready to train---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+REMOVED_LOG_LINES
 
 # 单个多行后台命令：nohup防终端断开，env RUN_ID供stop脚本核验，python -u关闭解释器缓冲。
 # stdout追加日志、stderr并入stdout、stdin断开；没有传scale_rates且train_busi.py会强制禁用多尺度。

@@ -86,19 +86,16 @@ esac
 
 
 # 将数据、权重、模型输入和运行标识追加到日志；RUN_ID另行打印到终端，供stop_test_acdc.sh使用。
-echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] DATASET=${DATASET}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] ROOT_PATH=${ROOT_PATH}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] LIST_DIR=${LIST_DIR}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] VOLUME_PATH=${ROOT_PATH}/test" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] CKPT=${CKPT}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=4" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] INFERENCE_BATCH_SIZE=${INFERENCE_BATCH_SIZE} MAX_CASES=${MAX_CASES}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] FUSION_MODE=${FUSION_MODE} CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
+PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES DATASET IMG_SIZE NUM_WORKERS INFERENCE_BATCH_SIZE Z_SPACING MAX_CASES SEED LIST_DIR ROOT_PATH CKPT CKPT_DIR TEST_SAVE_DIR OUTPUT_CSV USE_PIXEL_RELIABILITY_FUSION USE_CONTENT_AWARE_ANTIALIAS FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE TS RAND LOG_FILE RUN_ID PID_FILE)
 echo "[INFO] RUN_ID=${RUN_ID}"
 
-echo "---------------------------ready to test----------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+{
+  echo "[INFO] parameters:"
+  for name in "${PARAM_NAMES[@]}"; do
+    printf '[INFO] %-24s=%s\n' "$name" "${!name}"
+  done
+  echo "---------------------------ready to test----------------------------------"
+} | tee -a "${LOG_FILE}"
 
 # 整个续行块是一条后台命令；nohup抵抗终端断开，env把RUN_ID写入子进程环境供停止脚本核验。
 # 模型结构参数与EMCAD设计对应：PVTv2-B2编码器提取四尺度特征，1/3/5多尺度深度卷积核和扩展因子2配置MSCB，

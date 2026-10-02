@@ -129,7 +129,13 @@ RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 将路径、阈值和RUN_ID追加到日志，方便复核本次评估配置。
-echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME SPLIT DATA_ROOT CKPT CONFIG_FILE TEST_SAVE_DIR OUTPUT_CSV THRESHOLD RUN_ID)
+{
+  echo "[INFO] parameters:"
+  for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
+  echo "---------------------------ready to test----------------------------------"
+} | tee -a "${LOG_FILE}"
+: <<'REMOVED_LOG_LINES'
 echo "[INFO] DATASET_NAME=${DATASET_NAME}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SPLIT=${SPLIT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] DATA_ROOT=${DATA_ROOT}" | tee -a "${LOG_FILE}" > /dev/null
@@ -141,7 +147,7 @@ echo "[INFO] THRESHOLD=${THRESHOLD}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
-echo "---------------------------ready to test----------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+REMOVED_LOG_LINES
 
 # 整个续行块是一条nohup后台命令；模型结构由检查点旁config.json在test_isic.py中恢复。
 # 输出、错误、输入和RUN_ID的处理方式与其他启动器一致；--save_probabilities额外导出概率图。

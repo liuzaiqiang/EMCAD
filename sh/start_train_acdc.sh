@@ -104,20 +104,16 @@ esac
 
 
 # tee -a把配置写入日志；RUN_ID同时打印到终端，供stop_train_acdc.sh作为参数使用。
-echo "[INFO] PROJECT_DIR=${PROJECT_DIR}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] DATASET=${DATASET}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] ROOT_PATH=${ROOT_PATH}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] LIST_DIR=${LIST_DIR}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=4" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] SUPERVISION=${SUPERVISION} NUM_WORKERS=${NUM_WORKERS}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] FUSION_MODE=${FUSION_MODE} FUSION_LOSS_WEIGHT=${FUSION_LOSS_WEIGHT} RELIABILITY_LOSS_WEIGHT=${RELIABILITY_LOSS_WEIGHT}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] SEED=${SEED} N_GPU=${N_GPU}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
+PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES SEED IMG_SIZE BATCH_SIZE MAX_EPOCHS DATASET BASE_LR SUPERVISION NUM_WORKERS N_GPU DETERMINISTIC LIST_DIR ROOT_PATH OUTPUT_DIR USE_PIXEL_RELIABILITY_FUSION USE_CONTENT_AWARE_ANTIALIAS FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE TS RAND LOG_FILE RUN_ID PID_FILE)
 echo "[INFO] RUN_ID=${RUN_ID}"
 
-echo "---------------------------ready to train---------------------------------" | tee -a "${LOG_FILE}" > /dev/null
+{
+  echo "[INFO] parameters:"
+  for name in "${PARAM_NAMES[@]}"; do
+    printf '[INFO] %-24s=%s\n' "$name" "${!name}"
+  done
+  echo "---------------------------ready to train---------------------------------"
+} | tee -a "${LOG_FILE}"
 
 # 整个反斜杠块是一条后台命令：nohup抵抗终端断开，env注入RUN_ID用于停止时核验进程身份。
 # -u和PYTHONUNBUFFERED共同减少日志缓冲；stdout追加到日志，stderr合并，stdin断开，&立即返回控制权。
