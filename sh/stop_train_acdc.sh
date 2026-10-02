@@ -18,7 +18,7 @@ RUN_ID="${1:-${RUN_ID:-}}"
 }
 
 # 虽然这里未显式拼PROJECT_DIR，但前面已经cd到项目根，所以“RUN_ID.pid”在项目根解析。
-PID_FILE="${RUN_ID}.pid"
+PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 # PID文件不存在返回2，表示无法找到指定运行对应的进程号记录。
 [ -f "${PID_FILE}" ] || {
   echo "[ERROR] PID file not found: ${PID_FILE}"

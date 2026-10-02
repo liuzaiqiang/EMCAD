@@ -19,7 +19,7 @@ RUN_ID="${1:-${RUN_ID:-}}"
 }
 
 # start_test_acdc.sh同样在项目根写“RUN_ID.pid”；前面的cd使这个相对路径与启动器一致。
-PID_FILE="${RUN_ID}.pid"
+PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 # 找不到PID文件时返回2，不尝试用进程名进行模糊查找。
 [ -f "${PID_FILE}" ] || {
   echo "[ERROR] PID file not found: ${PID_FILE}"
