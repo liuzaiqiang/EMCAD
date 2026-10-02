@@ -93,9 +93,9 @@ class DiceLoss(nn.Module):
         self.num_classes = num_classes
 
     # logits: [B,C,H,W]，target: [B,H,W]。
-    def forward(self, logits, target):
+    def forward(self, logits, target, softmax=True):
         # softmax 在互斥类别维上把 logits 转成逐像素概率。
-        probabilities = torch.softmax(logits, dim=1)
+        probabilities = torch.softmax(logits, dim=1) if softmax else logits
         # one_hot 初始布局为 [B,H,W,C]。
         target_one_hot = F.one_hot(
             # 标签转 long，并显式声明输出类别数以保留缺失类别通道。

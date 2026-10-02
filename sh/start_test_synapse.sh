@@ -44,11 +44,24 @@ LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
 RUN_ID="test_${DATASET}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_batchSize_seed${seed}_maxepochs_${TS}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
-FUSION_MODE="pixel_reliability"
-FUSION_LOSS_WEIGHT="1"
+# 0=关闭，1=开启；默认双关闭。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
+
 RELIABILITY_LOSS_WEIGHT="1"
-CAA_MODE="caa"
 CAA_RESIDUAL_SCALE="0.1"
+
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
+  1) FUSION_MODE="pixel_reliability"; FUSION_LOSS_WEIGHT="1" ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) CAA_MODE="caa" ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
 
 PARAM_NAMES=(
   CONDA_BASE
