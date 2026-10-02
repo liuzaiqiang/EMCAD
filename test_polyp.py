@@ -158,6 +158,13 @@ def parse_args():
         default="./pretrained_pth/pvt/",
     )
 
+    # 与训练一致的融合与 CAA 结构参数；缺省值会在 main 中由 checkpoint 配置覆盖。
+    parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
+    parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
+    parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
+    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
+    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+
     # 推理输入的统一正方形边长。
     parser.add_argument(
         # 选项名。
@@ -251,9 +258,52 @@ def parse_args():
         # 布尔开关。
         action="store_true",
     )
+    # DSB18 多实例标签并为单通道前景时设为1。
+    parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
     # 返回 Namespace；后续 build_model/get_loader 直接读取其中字段。
     return parser.parse_args()
+
+
+# 从 checkpoint 同目录配置恢复网络结构、输入尺寸和掩膜解码方式。
+def restore_checkpoint_model_options(args):
+    config_path = Path(args.checkpoint).resolve().parent / "config.json"
+    if not config_path.is_file():
+        return
+    with config_path.open("r", encoding="utf-8") as stream:
+        config = json.load(stream)
+
+    options = {
+        "encoder": "--encoder",
+        "kernel_sizes": "--kernel_sizes",
+        "expansion_factor": "--expansion_factor",
+        "lgag_ks": "--lgag_ks",
+        "activation_mscb": "--activation_mscb",
+        "no_dw_parallel": "--no_dw_parallel",
+        "concatenation": "--concatenation",
+        "img_size": "--img_size",
+        "grayscale": "--grayscale",
+        "fusion_mode": "--fusion_mode",
+        "caa_mode": "--caa_mode",
+        "caa_residual_scale": "--caa_residual_scale",
+        "merge_instance_masks": "--merge_instance_masks",
+    }
+    for field, option in options.items():
+        if field not in config:
+            continue
+        requested = getattr(args, field)
+        configured = config[field]
+        explicitly_given = any(
+            token == option or token.startswith(option + "=")
+            for token in sys.argv[1:]
+        )
+        if explicitly_given and requested != configured:
+            raise RuntimeError(
+                "{} conflicts with checkpoint config: requested={} saved={}".format(
+                    option, requested, configured
+                )
+            )
+        setattr(args, field, configured)
 
 
 # 扫描某一 split/images 目录，返回大小写归一化后的文件 stem 集合。
@@ -325,6 +375,9 @@ def main():
                 args.checkpoint
             )
         )
+
+    # 在构造数据加载器和模型前恢复融合、CAA 与掩膜解码设置。
+    restore_checkpoint_model_options(args)
 
     # 二值阈值必须严格位于 0 和 1 之间。
     if not 0.0 < args.threshold < 1.0:
@@ -465,6 +518,8 @@ def main():
         color_image=not args.grayscale,
         # 传给 worker 初始化和数据顺序控制。
         seed=args.seed,
+        # DSB18 的实例掩膜目录按并集读取。
+        **({"merge_instance_masks": True} if args.merge_instance_masks else {}),
     )
 
     # 将检查点统一为绝对路径，写入报告后不依赖运行时工作目录。

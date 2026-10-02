@@ -62,6 +62,25 @@ LGAG_KS="${LGAG_KS:-3}"
 ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
 SUPERVISION="${SUPERVISION:-paper}"
 
+# 两项创新可分别消融；关闭可靠性融合时使用原始 p1 输出，关闭 CAA 时使用原始 EUCB 上采样。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
+FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
+RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+CAA_MODE="${CAA_MODE:-caa}"
+CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
+  1) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
+
 # prepared数据、模型输出与PVT预训练权重目录。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/isic/target}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth/ISIC}"
@@ -143,6 +162,8 @@ echo "[INFO] BATCH_SIZE=${BATCH_SIZE} VAL_BATCH_SIZE=${VAL_BATCH_SIZE}" | tee -a
 echo "[INFO] MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR} WEIGHT_DECAY=${WEIGHT_DECAY}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SUPERVISION=${SUPERVISION} NUM_WORKERS=${NUM_WORKERS}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SEED=${SEED} DETERMINISTIC=${DETERMINISTIC}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] FUSION_MODE=${FUSION_MODE} FUSION_LOSS_WEIGHT=${FUSION_LOSS_WEIGHT} RELIABILITY_LOSS_WEIGHT=${RELIABILITY_LOSS_WEIGHT}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
@@ -161,6 +182,11 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_isic.py \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --pretrained_dir "${PRETRAINED_DIR}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \

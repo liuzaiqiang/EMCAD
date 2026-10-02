@@ -85,3 +85,6 @@ events.out.tfevents.*
 
 mytest/
 docs/
+!docs/
+docs/*
+!docs/EMCAD除Synapse外数据集融合与CAA接入说明.md

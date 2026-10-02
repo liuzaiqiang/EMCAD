@@ -27,7 +27,7 @@ export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 export PYTHONUNBUFFERED=1
 
 # DATASET_NAME选择具体息肉数据集，SPLIT只允许val或test。
-DATASET="Polyp"
+DATASET="${DATASET:-Polyp}"
 DATASET_NAME="${DATASET_NAME:-ClinicDB}"
 SPLIT="${SPLIT:-test}"
 
@@ -46,6 +46,32 @@ ENCODER="${ENCODER:-pvt_v2_b2}"
 EXPANSION_FACTOR="${EXPANSION_FACTOR:-2}"
 LGAG_KS="${LGAG_KS:-3}"
 ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
+
+# 默认自动沿用 checkpoint/config.json；显式设 0/1 时仅用于核对对应训练消融配置。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-auto}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-auto}"
+CAA_MODE="${CAA_MODE:-caa}"
+MERGE_INSTANCE_MASKS="${MERGE_INSTANCE_MASKS:-auto}"
+FUSION_ARGS=()
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  auto) ;;
+  0) FUSION_ARGS+=(--fusion_mode p1) ;;
+  1) FUSION_ARGS+=(--fusion_mode pixel_reliability) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be auto, 0, or 1"; exit 1 ;;
+esac
+CAA_ARGS=()
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  auto) ;;
+  0) CAA_ARGS+=(--caa_mode off) ;;
+  1) CAA_ARGS+=(--caa_mode "${CAA_MODE}") ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be auto, 0, or 1"; exit 1 ;;
+esac
+MASK_ARGS=()
+case "${MERGE_INSTANCE_MASKS}" in
+  auto) ;;
+  0|1) MASK_ARGS+=(--merge_instance_masks "${MERGE_INSTANCE_MASKS}") ;;
+  *) echo "[ERROR] MERGE_INSTANCE_MASKS must be auto, 0, or 1"; exit 1 ;;
+esac
 
 # CKPT默认空，必须由调用者显式提供；DATA_ROOT指向prepared数据根。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
@@ -129,6 +155,9 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_polyp.py \
   --expansion_factor "${EXPANSION_FACTOR}" \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
+  "${FUSION_ARGS[@]}" \
+  "${CAA_ARGS[@]}" \
+  "${MASK_ARGS[@]}" \
   --img_size "${IMG_SIZE}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \

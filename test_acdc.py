@@ -15,8 +15,12 @@ import argparse
 import csv
 # logging 同时记录参数与逐病例指标。
 import logging
+# json 读取训练时保存的网络结构配置。
+import json
 # os 拼接并创建 checkpoint、日志、CSV、预测目录。
 import os
+# Path 定位 checkpoint 同目录配置文件。
+from pathlib import Path
 # sys.stdout 用于把日志同步显示在终端。
 import sys
 
@@ -65,7 +69,7 @@ def parse_args():
     # ACDC 根目录，测试时要求存在 test/。
     parser.add_argument("--root_path", default="../data/ACDC")
     # 划分清单目录，测试时要求 test.txt。
-    parser.add_argument("--list_dir", default="./data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default="../data/ACDC/lists_ACDC")
     # 预测/日志目录；None 时放在 checkpoint 同级 predictions/。
     parser.add_argument("--output_dir", default=None)
     # 指标 CSV 路径；None 时放在 checkpoint 同级 test_metrics.csv。
@@ -96,7 +100,7 @@ def parse_args():
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 每张切片进入模型前缩放到的正方形尺寸，须与训练设置相符。
-    parser.add_argument("--img_size", type=int, default=224)
+    parser.add_argument("--img_size", type=int, default=256)
     # 一个前向 batch 中包含的切片数，不是病例数。
     parser.add_argument("--inference_batch_size", type=int, default=8)
     # DataLoader 读取完整病例的 worker 数。
@@ -115,6 +119,45 @@ def parse_args():
     parser.add_argument("--save_npz", action="store_true")
     # 实际解析命令行。
     return parser.parse_args()
+
+
+# 从训练配置恢复 ACDC 模型参数，并拒绝与 checkpoint 不一致的显式覆盖。
+def restore_checkpoint_config(args):
+    config_path = Path(args.checkpoint).resolve().parent / "config.json"
+    if not config_path.is_file():
+        return
+    with config_path.open("r", encoding="utf-8") as stream:
+        config = json.load(stream)
+
+    options = {
+        "encoder": "--encoder",
+        "kernel_sizes": "--kernel_sizes",
+        "expansion_factor": "--expansion_factor",
+        "lgag_ks": "--lgag_ks",
+        "activation_mscb": "--activation_mscb",
+        "no_dw_parallel": "--no_dw_parallel",
+        "concatenation": "--concatenation",
+        "fusion_mode": "--fusion_mode",
+        "caa_mode": "--caa_mode",
+        "caa_residual_scale": "--caa_residual_scale",
+        "img_size": "--img_size",
+    }
+    for field, option in options.items():
+        if field not in config:
+            continue
+        requested = getattr(args, field)
+        configured = config[field]
+        explicit = any(
+            token == option or token.startswith(option + "=")
+            for token in sys.argv[1:]
+        )
+        if explicit and requested != configured:
+            raise RuntimeError(
+                "{} conflicts with checkpoint config: requested={} saved={}".format(
+                    option, requested, configured
+                )
+            )
+        setattr(args, field, configured)
 
 
 # 把设备字符串解析为 torch.device。
@@ -173,6 +216,9 @@ def main():
     if missing:
         # 每行打印一个缺失路径，便于定位。
         raise FileNotFoundError("Missing ACDC paths:\n" + "\n".join(missing))
+
+    # 配置恢复在模型构建之前运行，保证融合和 CAA 与 checkpoint 一致。
+    restore_checkpoint_config(args)
 
     # 测试固定为确定性模式，保证同环境重复评估稳定。
     seed_everything(args.seed, deterministic=True)

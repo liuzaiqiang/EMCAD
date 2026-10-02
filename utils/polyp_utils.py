@@ -97,6 +97,12 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # PVTv2 本地预训练权重所在目录；ResNet 采用自身加载路径。
         pretrained_dir=args.pretrained_dir,
+        # 仅在像素可靠性融合消融开启时创建对应可靠性头。
+        fusion_mode=args.fusion_mode,
+        # 将内容感知抗混叠模式传给 EMCAD 的 EUCB 上采样路径。
+        caa_mode=args.caa_mode,
+        # 内容门控残差强度；关闭 CAA 时该参数不起作用。
+        caa_residual_scale=args.caa_residual_scale,
     )
 
 
@@ -114,6 +120,50 @@ def model_outputs(model, images, mode="test"):
 
     # 对单输出模型也包装成一元素列表，使监督和评估代码无需另写分支。
     return [outputs]
+
+
+# 二分类融合辅助项沿用 EMCAD 融合分支 0.3*CE+0.7*Dice 的权重，并校准各头像素正确性。
+# 单通道 CE/Dice 分别用 BCEWithLogits 和 sigmoid soft Dice 表示；基础训练监督仍保持原加权 BCE+IoU。
+def binary_fusion_auxiliary_loss(model, outputs, mask, reliability_loss_weight=1.0):
+    # DataParallel 包装时，融合算子和可靠性头位于真实 EMCADNet 上。
+    core_model = model.module if isinstance(model, nn.DataParallel) else model
+    # p1 消融严格返回零附加损失，保留原始监督损失路径。
+    if getattr(core_model, "fusion_mode", "p1") == "p1":
+        return mask.new_tensor(0.0)
+
+    # 融合 logits 使用与多分类融合辅助项相同的 CE/Dice 比例及 squared-denominator Dice 口径。
+    fused_logits = core_model.fuse_outputs(outputs)
+    binary_ce = F.binary_cross_entropy_with_logits(fused_logits, mask)
+    probability = torch.sigmoid(fused_logits)
+    intersection = torch.sum(probability * mask)
+    dice_denominator = torch.sum(probability * probability) + torch.sum(mask * mask)
+    binary_dice = 1.0 - (2.0 * intersection + 1e-5) / (dice_denominator + 1e-5)
+    loss = 0.3 * binary_ce + 0.7 * binary_dice
+
+    # 像素可靠性头以各分割头的逐像素预测正确性为监督目标。
+    if core_model.fusion_mode == "pixel_reliability":
+        with torch.no_grad():
+            correctness = torch.cat(
+                [
+                    ((torch.sigmoid(output.detach()) >= 0.5) == (mask >= 0.5)).float()
+                    for output in outputs
+                ],
+                dim=1,
+            )
+        reliability_logits = torch.cat(
+            [
+                core_model.reliability_head4(outputs[0]),
+                core_model.reliability_head3(outputs[1]),
+                core_model.reliability_head2(outputs[2]),
+                core_model.reliability_head1(outputs[3]),
+            ],
+            dim=1,
+        )
+        loss = loss + float(reliability_loss_weight) * F.binary_cross_entropy_with_logits(
+            reliability_logits,
+            correctness,
+        )
+    return loss
 
 
 # 提取适合保存的参数字典；DataParallel 会在真实模型外再包一层 module。
@@ -593,13 +643,18 @@ def evaluate_loader(
                 dtype=torch.float32,
             )
 
-            # model_outputs 返回 [p4,p3,p2,p1] 的未激活 logits；[-1] 选择最高分辨率解码头 p1。
-            # 论文 §3.3 文字称 p4 为最终输出，但 Fig.2 的尺度标注及仓库推理代码均实际选择 p1。
-            logits = model_outputs(
+            # model_outputs 返回 [p4,p3,p2,p1]；p1 消融取最后一头，融合模式使用训练时配置的算子。
+            outputs = model_outputs(
                 model,
                 images,
                 mode="test",
-            )[-1]
+            )
+            core_model = model.module if isinstance(model, nn.DataParallel) else model
+            logits = (
+                core_model.fuse_outputs(outputs)
+                if hasattr(core_model, "fuse_outputs")
+                else outputs[-1]
+            )
 
             # 一个 batch 内逐图恢复各自原始尺寸、计算指标和保存结果。
             for index, name in enumerate(names):

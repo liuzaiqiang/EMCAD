@@ -48,6 +48,25 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 DEVICE="${DEVICE:-auto}"
 
+# 默认从 checkpoint/config.json 恢复模块配置；显式消融值必须与训练检查点一致。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-auto}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-auto}"
+CAA_MODE="${CAA_MODE:-caa}"
+FUSION_ARGS=()
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  auto) ;;
+  0) FUSION_ARGS+=(--fusion_mode p1) ;;
+  1) FUSION_ARGS+=(--fusion_mode pixel_reliability) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be auto, 0, or 1"; exit 1 ;;
+esac
+CAA_ARGS=()
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  auto) ;;
+  0) CAA_ARGS+=(--caa_mode off) ;;
+  1) CAA_ARGS+=(--caa_mode "${CAA_MODE}") ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be auto, 0, or 1"; exit 1 ;;
+esac
+
 # DATA_ROOT 默认指向预处理后的 BUSI target 目录；CKPT 不设默认权重，必须由调用者明确提供。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/busi/target}"
 CKPT="${CKPT:-}"
@@ -145,6 +164,8 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_busi.py \
   --split "${SPLIT}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
+  "${FUSION_ARGS[@]}" \
+  "${CAA_ARGS[@]}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
   --seed "${SEED}" \

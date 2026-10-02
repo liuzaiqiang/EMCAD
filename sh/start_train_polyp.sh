@@ -30,8 +30,13 @@ export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 export PYTHONUNBUFFERED=1
 
 # DATASET用于日志分类，DATASET_NAME选择target目录下的具体息肉数据集，默认ClinicDB。
-DATASET="Polyp"
+DATASET="${DATASET:-Polyp}"
 DATASET_NAME="${DATASET_NAME:-ClinicDB}"
+# DATASET同时决定默认输出父目录，只允许用作单层目录名的字符。
+[[ "${DATASET}" =~ ^[A-Za-z0-9._-]+$ ]] || {
+  echo "[ERROR] invalid DATASET output label: ${DATASET}"
+  exit 1
+}
 
 # 训练尺寸、训练/验证批量、epoch、AdamW学习率/权重衰减和梯度值裁剪均可由环境变量覆盖。
 IMG_SIZE="${IMG_SIZE:-352}"
@@ -61,9 +66,47 @@ LGAG_KS="${LGAG_KS:-3}"
 ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
 SUPERVISION="${SUPERVISION:-paper}"
 
-# 数据根目录应包含 <dataset>/{train,val}/{images,masks}；输出和PVT预训练权重目录也可外部覆盖。
+# 独立消融开关；关闭时分别映射到 p1 与 EUCB 原始上采样路径。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
+FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
+RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+CAA_MODE="${CAA_MODE:-caa}"
+CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
+USE_MULTI_SCALE_TRAINING="${USE_MULTI_SCALE_TRAINING:-1}"
+INPUT_CHANNELS="${INPUT_CHANNELS:-3}"
+MERGE_INSTANCE_MASKS="${MERGE_INSTANCE_MASKS:-0}"
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
+  1) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_MULTI_SCALE_TRAINING}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_MULTI_SCALE_TRAINING must be 0 or 1"; exit 1 ;;
+esac
+case "${INPUT_CHANNELS}" in
+  1|3) ;;
+  *) echo "[ERROR] INPUT_CHANNELS must be 1 or 3"; exit 1 ;;
+esac
+case "${MERGE_INSTANCE_MASKS}" in
+  0|1) ;;
+  *) echo "[ERROR] MERGE_INSTANCE_MASKS must be 0 or 1"; exit 1 ;;
+esac
+MULTI_SCALE_ARGS=()
+if [[ "${USE_MULTI_SCALE_TRAINING}" == "0" ]]; then MULTI_SCALE_ARGS+=(--no_multi_scale); fi
+IMAGE_MODE_ARGS=()
+if [[ "${INPUT_CHANNELS}" == "1" ]]; then IMAGE_MODE_ARGS+=(--grayscale); fi
+
+# 数据根目录应包含 <dataset>/{train,val}/{images,masks}；默认输出按 DATASET 隔离并可外部覆盖。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
-OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth/Polyp}"
+OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth/${DATASET}}"
 PRETRAINED_DIR="${PRETRAINED_DIR:-${PROJECT_DIR}/pretrained_pth/pvt}"
 
 # 白名单正则只允许安全文件名字符，防止DATASET_NAME把路径拼接到意外目录；失败退出码为1。
@@ -123,6 +166,9 @@ echo "[INFO] IMG_SIZE=${IMG_SIZE}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] BATCH_SIZE=${BATCH_SIZE} VAL_BATCH_SIZE=${VAL_BATCH_SIZE}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR} WEIGHT_DECAY=${WEIGHT_DECAY}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] NUM_WORKERS=${NUM_WORKERS} SEED=${SEED}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] FUSION_MODE=${FUSION_MODE} FUSION_LOSS_WEIGHT=${FUSION_LOSS_WEIGHT} RELIABILITY_LOSS_WEIGHT=${RELIABILITY_LOSS_WEIGHT}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] MULTI_SCALE=${USE_MULTI_SCALE_TRAINING} INPUT_CHANNELS=${INPUT_CHANNELS} MERGE_INSTANCE_MASKS=${MERGE_INSTANCE_MASKS}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
@@ -141,6 +187,12 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --caa_mode "${CAA_MODE}" \
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --merge_instance_masks "${MERGE_INSTANCE_MASKS}" \
   --pretrained_dir "${PRETRAINED_DIR}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
@@ -151,6 +203,8 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
   --clip "${CLIP}" \
   --scheduler constant \
   --scale_rates 0.75 1.0 1.25 \
+  "${MULTI_SCALE_ARGS[@]}" \
+  "${IMAGE_MODE_ARGS[@]}" \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${N_GPU}" \
   --seed "${SEED}" \

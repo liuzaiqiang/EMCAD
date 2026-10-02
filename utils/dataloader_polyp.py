@@ -36,7 +36,7 @@ SUPPORTED_EXTENSIONS = {
 
 
 # 扫描一个目录，并以不区分大小写的文件主体 stem 建立唯一索引。
-def _index_by_stem(root):
+def _index_by_stem(root, include_directories=False):
     # 统一转换为 Path 对象。
     root = Path(root)
     # 数据根必须是已存在目录。
@@ -48,10 +48,11 @@ def _index_by_stem(root):
     indexed = {}
     # 按路径名称稳定排序遍历目录第一层。
     for path in sorted(root.iterdir()):
-        # 只接受普通文件且扩展名属于支持集合。
-        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            # casefold 比 lower 更适合不区分大小写的规范键。
-            key = path.stem.casefold()
+        # DSB18 可选地把每张图像的实例掩膜放在同 stem 子目录中。
+        is_mask_directory = include_directories and path.is_dir()
+        if is_mask_directory or (path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS):
+            # 目录名就是图像 stem；普通文件则去掉扩展名后配对。
+            key = (path.name if is_mask_directory else path.stem).casefold()
             # 同一目录中不同扩展名但同 stem 会造成图像/掩膜配对歧义。
             if key in indexed:
                 # 报告冲突目录和两个实际文件名。
@@ -116,6 +117,8 @@ class PolypDataset(data.Dataset):
             split="train",
             # True 读取 RGB，False 读取单通道灰度。
             color_image=True,
+            # True 时将同 stem 子目录中的多个 DSB18 实例掩膜合并为二值前景。
+            merge_instance_masks=False,
     ):
         # 限定合法划分，避免拼写错误静默进入评测分支。
         if split not in {"train", "val", "test"}:
@@ -130,11 +133,16 @@ class PolypDataset(data.Dataset):
         self.split = split
         # 保存颜色输入模式。
         self.color_image = bool(color_image)
+        # 该选项只影响显式请求的实例级标注数据。
+        self.merge_instance_masks = bool(merge_instance_masks)
 
         # 建立图像 stem 索引。
         images = _index_by_stem(image_root)
         # 建立掩膜 stem 索引。
-        masks = _index_by_stem(gt_root)
+        masks = _index_by_stem(
+            gt_root,
+            include_directories=self.merge_instance_masks,
+        )
 
         # 图像 ID 集合。
         image_keys = set(images)
@@ -181,6 +189,10 @@ class PolypDataset(data.Dataset):
                     # 统一编码为 UTF-8 字节后更新 SHA-256。
                 ).encode("utf-8")
             )
+            if mask_path.is_dir():
+                for instance_path in sorted(mask_path.iterdir()):
+                    if instance_path.is_file() and instance_path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                        digest.update((instance_path.name + "\n").encode("utf-8"))
         # 保存十六进制清单指纹，供实验记录数据版本。
         self.manifest_sha256 = digest.hexdigest()
 
@@ -292,13 +304,33 @@ class PolypDataset(data.Dataset):
             # 彩色或灰度标志。
             image_flag,
         )
-        # 使用 IMREAD_UNCHANGED 保留掩膜原始灰度或颜色通道，兼容 BKAI 彩色标注。
-        mask_raw = cv2.imread(
-            # 掩膜文件路径。
-            str(mask_path),
-            # 不强制转灰度。
-            cv2.IMREAD_UNCHANGED,
-        )
+        # DSB18 的实例文件夹按像素并集合并，评估目标仍为“任意细胞前景”。
+        if mask_path.is_dir():
+            instance_paths = [
+                path for path in sorted(mask_path.iterdir())
+                if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+            ]
+            if not instance_paths:
+                raise RuntimeError("No instance masks found in: {}".format(mask_path))
+            mask = None
+            for instance_path in instance_paths:
+                instance = cv2.imread(str(instance_path), cv2.IMREAD_GRAYSCALE)
+                if instance is None:
+                    raise RuntimeError("Cannot read instance mask: {}".format(instance_path))
+                if mask is None:
+                    mask = np.zeros(instance.shape, dtype=np.uint8)
+                elif instance.shape != mask.shape:
+                    raise RuntimeError("Instance mask size mismatch: {}".format(instance_path))
+                mask |= (instance > 0).astype(np.uint8)
+            mask_raw = None
+        else:
+            # 保留掩膜灰度或颜色通道，兼容现有 polyp 标注形式。
+            mask_raw = cv2.imread(
+                # 掩膜文件路径。
+                str(mask_path),
+                # 不强制转灰度。
+                cv2.IMREAD_UNCHANGED,
+            )
 
         # OpenCV 读取失败时返回 None。
         if image is None:
@@ -309,7 +341,7 @@ class PolypDataset(data.Dataset):
             )
 
         # 掩膜读取失败同样立即终止。
-        if mask_raw is None:
+        if not mask_path.is_dir() and mask_raw is None:
             # 报告具体掩膜路径。
             raise RuntimeError(
                 # 格式化错误文本。
@@ -327,14 +359,18 @@ class PolypDataset(data.Dataset):
             )
 
         # 二维原始掩膜是 ClinicDB/Kvasir/ColonDB/ETIS 等常见灰度格式。
-        if mask_raw.ndim == 2:
+        if mask_path.is_dir():
+            pass
+        elif mask_raw.ndim == 2:
             # ClinicDB, Kvasir, ColonDB, ETIS:
             # preserve the original grayscale-mask behavior.
             # 直接保留二维灰度数组引用，随后按值域二值化。
             mask = mask_raw
 
             # 最大灰度大于 10 时视为 0/255 一类的 8 位掩膜。
-            if int(mask.max()) > 10:
+            if self.merge_instance_masks:
+                mask = (mask > 0).astype(np.uint8)
+            elif int(mask.max()) > 10:
                 # 使用 128 阈值获得 0/1 前景。
                 mask = (
                     # 阈值比较产生布尔数组。
@@ -367,10 +403,10 @@ class PolypDataset(data.Dataset):
                 axis=2,
             )
 
-            # 强度不小于 128 的任何颜色标记视为前景。
+            # DSB18 实例编号掩膜保留任一非零像素；其他彩色标注沿用原 128 阈值。
             mask = (
-                # 阈值产生布尔图。
-                    mask_signal >= 128
+                # 按 DSB18 实例并集模式或原有彩色掩膜规则二值化。
+                    mask_signal > 0 if self.merge_instance_masks else mask_signal >= 128
                 # 转 uint8 0/1。
             ).astype(np.uint8)
 
@@ -491,6 +527,8 @@ def get_loader(
         color_image=True,
         # 主随机种子。
         seed=2222,
+        # 仅用于 DSB18 等实例级标注的显式并集合并。
+        merge_instance_masks=False,
 ):
     # 创建经过严格 stem 配对的数据集。
     dataset = PolypDataset(
@@ -506,6 +544,8 @@ def get_loader(
         split=split,
         # 传入通道模式。
         color_image=color_image,
+        # 传入实例标注开关。
+        merge_instance_masks=merge_instance_masks,
     )
 
     # 创建独立 PyTorch Generator，控制 DataLoader 打乱和 worker 初始种子。

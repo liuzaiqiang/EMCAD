@@ -80,7 +80,7 @@ def parse_args():
     # ACDC 根目录，预期含 train/、valid/ 等子目录。
     parser.add_argument("--root_path", default="../data/ACDC")
     # 列表目录，至少需要 train.txt 和 valid.txt。
-    parser.add_argument("--list_dir", default="../data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default="../data/ACDC/lists_ACDC")
     # 所有 ACDC 实验目录的根位置。
     parser.add_argument("--output_dir", default="./model_pth/ACDC")
     # 单次实验名；None 时主函数用时间戳自动生成。

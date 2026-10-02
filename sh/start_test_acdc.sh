@@ -14,20 +14,13 @@ cd "${PROJECT_DIR}"
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
-# conda根目录、环境名和Python入口均允许用环境变量覆盖服务器默认值。
-#CONDA_BASE="${CONDA_BASE:-/base/mambaforge}"
-#CONDA_ENV_NAME="${CONDA_ENV_NAME:-sld_emcad}"
-
-
-CONDA_BASE="/home/mlf/anaconda3"
-CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
-source "${CONDA_BASE}/etc/profile.d/conda.sh"
-conda activate "${CONDA_ENV_PREFIX}"
-
-# conda初始化文件存在时才激活环境，否则继续使用调用者已经准备好的Python环境。
+# Conda 路径和 Python 可执行文件可由服务器环境覆盖；没有 Conda 时使用当前 Python。
+CONDA_BASE="${CONDA_BASE:-/home/mlf/anaconda3}"
+CONDA_ENV_PREFIX="${CONDA_ENV_PREFIX:-${CONDA_BASE}/envs/sld_emcad}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
   source "${CONDA_BASE}/etc/profile.d/conda.sh"
-  conda activate "${CONDA_ENV_NAME}"
+  conda activate "${CONDA_ENV_PREFIX}"
 fi
 
 # 默认暴露0号GPU；关闭Python输出缓冲，让nohup日志及时写出。
@@ -37,7 +30,7 @@ export PYTHONUNBUFFERED=1
 # ACDC 是4类心脏MRI分割；IMG_SIZE控制逐切片网络输入尺寸。
 # INFERENCE_BATCH_SIZE是切片推理批量，Z_SPACING用于三维距离类指标的体素间距换算，MAX_CASES=0表示全部病例。
 DATASET="ACDC"
-IMG_SIZE="${IMG_SIZE:-224}"
+IMG_SIZE="${IMG_SIZE:-256}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-8}"
 Z_SPACING="${Z_SPACING:-10.0}"
@@ -45,7 +38,7 @@ MAX_CASES="${MAX_CASES:-0}"
 SEED="${SEED:-2222}"
 
 # 病例列表和数据根目录采用项目旁的固定ACDC布局；CKPT必须由调用者明确指定。
-LIST_DIR="${PROJECT_DIR}/../data/ACDC/lists/lists_ACDC"
+LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../data/ACDC/lists_ACDC}"
 ROOT_PATH="${PROJECT_DIR}/../data/ACDC"
 CKPT="${CKPT:-}"
 
@@ -72,11 +65,24 @@ RUN_ID="test_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}
 PID_FILE="${RUN_ID}.pid"
 
 
-FUSION_MODE="pixel_reliability"
-FUSION_LOSS_WEIGHT="1"
-RELIABILITY_LOSS_WEIGHT="1"
-CAA_MODE="caa"
-CAA_RESIDUAL_SCALE="0.1"
+# 评估默认按当前实验分支的两模块模型运行；设为0可选择对应 p1/off 检查点。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
+FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
+RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+CAA_MODE="${CAA_MODE:-caa}"
+CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1" ;;
+  1) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
 
 
 # 将数据、权重、模型输入和运行标识追加到日志；RUN_ID另行打印到终端，供stop_test_acdc.sh使用。
@@ -88,6 +94,7 @@ echo "[INFO] VOLUME_PATH=${ROOT_PATH}/test" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] CKPT=${CKPT}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=4" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] INFERENCE_BATCH_SIZE=${INFERENCE_BATCH_SIZE} MAX_CASES=${MAX_CASES}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] FUSION_MODE=${FUSION_MODE} CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
@@ -96,9 +103,9 @@ echo "---------------------------ready to test----------------------------------
 # 整个续行块是一条后台命令；nohup抵抗终端断开，env把RUN_ID写入子进程环境供停止脚本核验。
 # 模型结构参数与EMCAD设计对应：PVTv2-B2编码器提取四尺度特征，1/3/5多尺度深度卷积核和扩展因子2配置MSCB，
 # lgag_ks=3配置LGAG门控卷积核，relu6是MSCB激活。它们必须与训练该CKPT时的结构一致，否则权重形状或语义会不匹配。
-# 这些模块关系见项目所附EMCAD论文的方法与整体架构部分；Shell仅传参，真正组网发生在test_ACDC.py及lib网络模块中。
+# 模块参数必须与训练 checkpoint 一致；网络构造和融合推理由 test_acdc.py 与 lib 网络模块完成。
 # --save_nii和--save_npz分别请求保存医学影像格式预测与数组结果；输出追加日志、错误合并、输入断开并转入后台。
-nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_ACDC.py \
+nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_acdc.py \
   --checkpoint "${CKPT}" \
   --root_path "${ROOT_PATH}" \
   --list_dir "${LIST_DIR}" \

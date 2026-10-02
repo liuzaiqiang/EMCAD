@@ -51,6 +51,8 @@ DATASET="ACDC"
 BASE_LR="${BASE_LR:-1e-4}"
 SUPERVISION="${SUPERVISION:-mutation}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
+# ACDC defaults to one visible GPU; override N_GPU when deliberately using multiple visible cards.
+N_GPU="${N_GPU:-1}"
 
 DETERMINISTIC="${DETERMINISTIC:-1}"
 
@@ -81,11 +83,24 @@ RUN_ID="train_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${R
 PID_FILE="${RUN_ID}.pid"
 
 
-FUSION_MODE="pixel_reliability"
-FUSION_LOSS_WEIGHT="1"
-RELIABILITY_LOSS_WEIGHT="1"
-CAA_MODE="caa"
-CAA_RESIDUAL_SCALE="0.1"
+# 两个模块分别消融；设置为0时参数明确传为p1或off，相关网络结构/损失不会启用。
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
+FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
+RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+CAA_MODE="${CAA_MODE:-caa}"
+CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
+  1) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
 
 
 # tee -a把配置写入日志；RUN_ID同时打印到终端，供stop_train_acdc.sh作为参数使用。
@@ -96,7 +111,9 @@ echo "[INFO] LIST_DIR=${LIST_DIR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] IMG_SIZE=${IMG_SIZE} NUM_CLASSES=4" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] BATCH_SIZE=${BATCH_SIZE} MAX_EPOCHS=${MAX_EPOCHS} BASE_LR=${BASE_LR}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] SUPERVISION=${SUPERVISION} NUM_WORKERS=${NUM_WORKERS}" | tee -a "${LOG_FILE}" > /dev/null
-echo "[INFO] SEED=${SEED} n_gpu=${n_gpu}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] FUSION_MODE=${FUSION_MODE} FUSION_LOSS_WEIGHT=${FUSION_LOSS_WEIGHT} RELIABILITY_LOSS_WEIGHT=${RELIABILITY_LOSS_WEIGHT}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] CAA_MODE=${CAA_MODE} CAA_RESIDUAL_SCALE=${CAA_RESIDUAL_SCALE}" | tee -a "${LOG_FILE}" > /dev/null
+echo "[INFO] SEED=${SEED} N_GPU=${N_GPU}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}" | tee -a "${LOG_FILE}" > /dev/null
 echo "[INFO] RUN_ID=${RUN_ID}"
 
@@ -120,7 +137,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --max_epochs "${MAX_EPOCHS}" \
   --base_lr "${BASE_LR}" \
   --num_workers "${NUM_WORKERS}" \
-  --n_gpu "${n_gpu}" \
+  --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
   --fusion_mode "${FUSION_MODE}" \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
