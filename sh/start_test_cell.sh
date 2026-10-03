@@ -33,9 +33,6 @@ case "${DATASET_NAME}" in
     ;;
 esac
 
-# Cell 论文默认 256x256；需与训练 checkpoint 的 config.json 中 img_size 相同。
-export IMG_SIZE="${IMG_SIZE:-256}"
-
 # 切换到项目根并 source 通用测试启动器；CKPT、SPLIT、GPU 与结果目录仍使用既有参数。
 cd "${PROJECT_DIR}"
 source "${SCRIPT_DIR}/start_test_polyp.sh"

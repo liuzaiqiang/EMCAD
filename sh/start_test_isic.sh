@@ -38,27 +38,7 @@ NUM_WORKERS="${NUM_WORKERS:-0}"
 THRESHOLD="${THRESHOLD:-0.5}"
 MAX_CASES="${MAX_CASES:-0}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
-SEED="${SEED:-2222}"
 DEVICE="${DEVICE:-auto}"
-
-# 默认按 checkpoint/config.json 自动恢复；显式 0/1 可检查所选消融模型是否匹配。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-auto}"
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-auto}"
-CAA_MODE="${CAA_MODE:-caa}"
-FUSION_ARGS=()
-case "${USE_PIXEL_RELIABILITY_FUSION}" in
-  auto) ;;
-  0) FUSION_ARGS+=(--fusion_mode p1) ;;
-  1) FUSION_ARGS+=(--fusion_mode pixel_reliability) ;;
-  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be auto, 0, or 1"; exit 1 ;;
-esac
-CAA_ARGS=()
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  auto) ;;
-  0) CAA_ARGS+=(--caa_mode off) ;;
-  1) CAA_ARGS+=(--caa_mode "${CAA_MODE}") ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be auto, 0, or 1"; exit 1 ;;
-esac
 
 # CKPT必须显式提供；prepared数据位于DATA_ROOT/<ISIC版本>/<划分>。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/isic/target}"
@@ -126,7 +106,7 @@ TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
 LOG_FILE="${LOG_DIR}/test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}.log"
-RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 将路径、阈值和RUN_ID追加到日志，方便复核本次评估配置。
@@ -159,12 +139,9 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_isic.py \
   --split "${SPLIT}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
-  "${FUSION_ARGS[@]}" \
-  "${CAA_ARGS[@]}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
   --threshold "${THRESHOLD}" \
-  --seed "${SEED}" \
   --deterministic "${DETERMINISTIC}" \
   --max_cases "${MAX_CASES}" \
   --device "${DEVICE}" \

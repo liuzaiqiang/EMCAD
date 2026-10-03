@@ -45,27 +45,7 @@ INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 MAX_CASES="${MAX_CASES:-0}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
-SEED="${SEED:-2222}"
 DEVICE="${DEVICE:-auto}"
-
-# 默认从 checkpoint/config.json 恢复模块配置；显式消融值必须与训练检查点一致。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-auto}"
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-auto}"
-CAA_MODE="${CAA_MODE:-caa}"
-FUSION_ARGS=()
-case "${USE_PIXEL_RELIABILITY_FUSION}" in
-  auto) ;;
-  0) FUSION_ARGS+=(--fusion_mode p1) ;;
-  1) FUSION_ARGS+=(--fusion_mode pixel_reliability) ;;
-  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be auto, 0, or 1"; exit 1 ;;
-esac
-CAA_ARGS=()
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  auto) ;;
-  0) CAA_ARGS+=(--caa_mode off) ;;
-  1) CAA_ARGS+=(--caa_mode "${CAA_MODE}") ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be auto, 0, or 1"; exit 1 ;;
-esac
 
 # DATA_ROOT 默认指向预处理后的 BUSI target 目录；CKPT 不设默认权重，必须由调用者明确提供。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/busi/target}"
@@ -135,7 +115,7 @@ TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
 # RUN_ID 把任务类型、数据集、划分、时间、GPU、种子和随机后缀串联起来，并关联日志与PID文件。
-RUN_ID="test_${DATASET}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+RUN_ID="test_${DATASET}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_RAND${RAND}"
 LOG_FILE="${LOG_DIR}/${RUN_ID}.log"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
@@ -171,11 +151,8 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_busi.py \
   --split "${SPLIT}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
-  "${FUSION_ARGS[@]}" \
-  "${CAA_ARGS[@]}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
-  --seed "${SEED}" \
   --deterministic "${DETERMINISTIC}" \
   --max_cases "${MAX_CASES}" \
   --device "${DEVICE}" \

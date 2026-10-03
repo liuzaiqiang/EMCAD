@@ -27,15 +27,13 @@ fi
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 export PYTHONUNBUFFERED=1
 
-# ACDC 是4类心脏MRI分割；IMG_SIZE控制逐切片网络输入尺寸。
+# ACDC 是4类心脏MRI分割；模型结构与输入尺寸从 checkpoint 同目录的 config.json 恢复。
 # INFERENCE_BATCH_SIZE是切片推理批量，Z_SPACING用于三维距离类指标的体素间距换算，MAX_CASES=0表示全部病例。
 DATASET="ACDC"
-IMG_SIZE="${IMG_SIZE:-256}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-8}"
 Z_SPACING="${Z_SPACING:-10.0}"
 MAX_CASES="${MAX_CASES:-0}"
-SEED="${SEED:-2222}"
 
 # 病例列表和数据根目录采用项目旁的固定ACDC布局；CKPT必须由调用者明确指定。
 LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../data/ACDC/lists_ACDC}"
@@ -54,40 +52,22 @@ test -f "${LIST_DIR}/test.txt" || { echo "[ERROR] test list not found: ${LIST_DI
 
 # 由检查点目录派生NIfTI/NPZ预测输出目录和逐病例指标CSV，确保结果与对应权重放在一起。
 CKPT_DIR="$(cd "$(dirname "${CKPT}")" && pwd)"
+CKPT="${CKPT_DIR}/$(basename "${CKPT}")"
+CONFIG_FILE="${CKPT_DIR}/config.json"
+test -f "${CONFIG_FILE}" || { echo "[ERROR] checkpoint config not found: ${CONFIG_FILE}"; exit 1; }
 TEST_SAVE_DIR="${CKPT_DIR}/predictions"
 OUTPUT_CSV="${CKPT_DIR}/test_metrics.csv"
 
 # 时间戳和随机十六进制后缀共同用于区分并发测试；RAND来自系统随机源的6字节数据。
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-# 日志名记录数据集与输入尺寸；RUN_ID额外记录GPU、种子和随机后缀，PID文件位于已cd到的项目根目录。
-LOG_FILE="${LOG_DIR}/test_${DATASET}__img${IMG_SIZE}_${TS}.log"
-RUN_ID="test_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+# 日志名记录数据集与唯一运行标识；模型参数由Python从CONFIG_FILE读取。
+LOG_FILE="${LOG_DIR}/test_${DATASET}_${TS}_${RAND}.log"
+RUN_ID="test_${DATASET}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_RAND${RAND}"
 PID_FILE="${RUN_ID}.pid"
 
-
-# 评估默认按当前实验分支的两模块模型运行；设为0可选择对应 p1/off 检查点。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
-FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
-FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
-RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
-CAA_MODE="${CAA_MODE:-caa}"
-CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
-case "${USE_PIXEL_RELIABILITY_FUSION}" in
-  0) FUSION_MODE="p1" ;;
-  1) ;;
-  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
-esac
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  0) CAA_MODE="off" ;;
-  1) ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
-esac
-
-
-# 将数据、权重、模型输入和运行标识追加到日志；RUN_ID另行打印到终端，供stop_test_acdc.sh使用。
-PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES DATASET IMG_SIZE NUM_WORKERS INFERENCE_BATCH_SIZE Z_SPACING MAX_CASES SEED LIST_DIR ROOT_PATH CKPT CKPT_DIR TEST_SAVE_DIR OUTPUT_CSV USE_PIXEL_RELIABILITY_FUSION USE_CONTENT_AWARE_ANTIALIAS FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE TS RAND LOG_FILE RUN_ID PID_FILE)
+# 将测试专属数据路径、推理批量和运行标识写入日志；模型配置由配置文件统一记录。
+PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES DATASET NUM_WORKERS INFERENCE_BATCH_SIZE Z_SPACING MAX_CASES LIST_DIR ROOT_PATH CKPT CKPT_DIR CONFIG_FILE TEST_SAVE_DIR OUTPUT_CSV TS RAND LOG_FILE RUN_ID PID_FILE)
 echo "[INFO] RUN_ID=${RUN_ID}"
 
 {
@@ -99,9 +79,7 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 } | tee -a "${LOG_FILE}"
 
 # 整个续行块是一条后台命令；nohup抵抗终端断开，env把RUN_ID写入子进程环境供停止脚本核验。
-# 模型结构参数与EMCAD设计对应：PVTv2-B2编码器提取四尺度特征，1/3/5多尺度深度卷积核和扩展因子2配置MSCB，
-# lgag_ks=3配置LGAG门控卷积核，relu6是MSCB激活。它们必须与训练该CKPT时的结构一致，否则权重形状或语义会不匹配。
-# 模块参数必须与训练 checkpoint 一致；网络构造和融合推理由 test_acdc.py 与 lib 网络模块完成。
+# 模型结构、融合/CAA选项和输入尺寸均由 test_acdc.py 从 CONFIG_FILE 自动恢复，启动器不再重复填写。
 # --save_nii和--save_npz分别请求保存医学影像格式预测与数组结果；输出追加日志、错误合并、输入断开并转入后台。
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_acdc.py \
   --checkpoint "${CKPT}" \
@@ -109,24 +87,12 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_acdc.py \
   --list_dir "${LIST_DIR}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
-  --encoder pvt_v2_b2 \
-  --kernel_sizes 1 3 5 \
-  --expansion_factor 2 \
-  --lgag_ks 3 \
-  --activation_mscb relu6 \
-  --img_size "${IMG_SIZE}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
   --z_spacing "${Z_SPACING}" \
-  --seed "${SEED}" \
   --max_cases "${MAX_CASES}" \
   --device auto \
   --save_nii \
-  --fusion_mode "${FUSION_MODE}" \
-  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
-  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
-  --caa_mode "${CAA_MODE}" \
-  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --save_npz \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

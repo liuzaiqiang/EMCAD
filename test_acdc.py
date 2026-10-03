@@ -125,7 +125,9 @@ def parse_args():
 def restore_checkpoint_config(args):
     config_path = Path(args.checkpoint).resolve().parent / "config.json"
     if not config_path.is_file():
-        return
+        raise FileNotFoundError(
+            "Checkpoint config is required to reconstruct the trained model: {}".format(config_path)
+        )
     with config_path.open("r", encoding="utf-8") as stream:
         config = json.load(stream)
 

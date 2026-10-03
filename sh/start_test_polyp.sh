@@ -31,47 +31,13 @@ DATASET="${DATASET:-Polyp}"
 DATASET_NAME="${DATASET_NAME:-ClinicDB}"
 SPLIT="${SPLIT:-test}"
 
-# 推理尺寸、批量、DataLoader、二值阈值、病例上限、随机性和设备参数。
-IMG_SIZE="${IMG_SIZE:-352}"
+# 推理批量、DataLoader、二值阈值、病例上限、随机性和设备参数；输入尺寸由训练配置恢复。
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-1}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 THRESHOLD="${THRESHOLD:-0.5}"
 MAX_CASES="${MAX_CASES:-0}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
-SEED="${SEED:-2222}"
 DEVICE="${DEVICE:-auto}"
-
-# 必须与检查点训练时架构一致的EMCAD配置；本脚本直接把这些值传给test_polyp.py。
-ENCODER="${ENCODER:-pvt_v2_b2}"
-EXPANSION_FACTOR="${EXPANSION_FACTOR:-2}"
-LGAG_KS="${LGAG_KS:-3}"
-ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
-
-# 默认自动沿用 checkpoint/config.json；显式设 0/1 时仅用于核对对应训练消融配置。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-auto}"
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-auto}"
-CAA_MODE="${CAA_MODE:-caa}"
-MERGE_INSTANCE_MASKS="${MERGE_INSTANCE_MASKS:-auto}"
-FUSION_ARGS=()
-case "${USE_PIXEL_RELIABILITY_FUSION}" in
-  auto) ;;
-  0) FUSION_ARGS+=(--fusion_mode p1) ;;
-  1) FUSION_ARGS+=(--fusion_mode pixel_reliability) ;;
-  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be auto, 0, or 1"; exit 1 ;;
-esac
-CAA_ARGS=()
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  auto) ;;
-  0) CAA_ARGS+=(--caa_mode off) ;;
-  1) CAA_ARGS+=(--caa_mode "${CAA_MODE}") ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be auto, 0, or 1"; exit 1 ;;
-esac
-MASK_ARGS=()
-case "${MERGE_INSTANCE_MASKS}" in
-  auto) ;;
-  0|1) MASK_ARGS+=(--merge_instance_masks "${MERGE_INSTANCE_MASKS}") ;;
-  *) echo "[ERROR] MERGE_INSTANCE_MASKS must be auto, 0, or 1"; exit 1 ;;
-esac
 
 # CKPT默认空，必须由调用者显式提供；DATA_ROOT指向prepared数据根。
 DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
@@ -116,6 +82,11 @@ test -d "${DATA_ROOT}/${DATASET_NAME}/${SPLIT}/masks" || {
 # 把检查点目录和文件名规范成绝对路径，避免后台进程受工作目录变化影响。
 CKPT_DIR="$(cd "$(dirname "${CKPT}")" && pwd)"
 CKPT="${CKPT_DIR}/$(basename "${CKPT}")"
+CONFIG_FILE="${CKPT_DIR}/config.json"
+test -f "${CONFIG_FILE}" || {
+  echo "[ERROR] checkpoint config not found: ${CONFIG_FILE}"
+  exit 1
+}
 
 # 默认把预测、概率图和CSV写在检查点旁边，便于模型与结果一一对应。
 TEST_SAVE_DIR="${TEST_SAVE_DIR:-${CKPT_DIR}/${SPLIT}_${DATASET_NAME}_outputs}"
@@ -125,12 +96,12 @@ OUTPUT_CSV="${OUTPUT_CSV:-${TEST_SAVE_DIR}/test_metrics.csv}"
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
-LOG_FILE="${LOG_DIR}/test_${DATASET}_${DATASET_NAME}_${SPLIT}__img${IMG_SIZE}_${TS}.log"
-RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+LOG_FILE="${LOG_DIR}/test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_${RAND}.log"
+RUN_ID="test_${DATASET}_${DATASET_NAME}_${SPLIT}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
-# 把实际解析后的路径写入日志；RUN_ID同时显示在终端。
-PARAM_NAMES=(PROJECT_DIR DATASET_NAME SPLIT DATA_ROOT CKPT TEST_SAVE_DIR OUTPUT_CSV RUN_ID)
+# 把实际解析后的路径写入日志；网络设置由检查点配置文件管理。
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME SPLIT DATA_ROOT CKPT CONFIG_FILE TEST_SAVE_DIR OUTPUT_CSV RUN_ID)
 {
   echo "[INFO] parameters:"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
@@ -157,19 +128,9 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_polyp.py \
   --split "${SPLIT}" \
   --output_dir "${TEST_SAVE_DIR}" \
   --output_csv "${OUTPUT_CSV}" \
-  --encoder "${ENCODER}" \
-  --kernel_sizes 1 3 5 \
-  --expansion_factor "${EXPANSION_FACTOR}" \
-  --lgag_ks "${LGAG_KS}" \
-  --activation_mscb "${ACTIVATION_MSCB}" \
-  "${FUSION_ARGS[@]}" \
-  "${CAA_ARGS[@]}" \
-  "${MASK_ARGS[@]}" \
-  --img_size "${IMG_SIZE}" \
   --inference_batch_size "${INFERENCE_BATCH_SIZE}" \
   --num_workers "${NUM_WORKERS}" \
   --threshold "${THRESHOLD}" \
-  --seed "${SEED}" \
   --deterministic "${DETERMINISTIC}" \
   --max_cases "${MAX_CASES}" \
   --device "${DEVICE}" \

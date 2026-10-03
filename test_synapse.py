@@ -10,6 +10,8 @@
 
 # argparse 解析测试路径、网络结构和保存选项。
 import argparse
+# json 用来读取训练 checkpoint 同目录中的 config.json，自动复用训练时的结构和推理尺寸。
+import json
 # logging 将逐病例与逐类别指标写入文件并同步输出到终端。
 import logging
 # os 负责 checkpoint、日志和预测目录的拼接/创建。
@@ -92,6 +94,9 @@ parser.add_argument('--supervision', type=str,
 # 允许启动脚本直接传入已经选定的 best.pth；为空时保留原有的按训练参数重建路径行为。
 parser.add_argument('--checkpoint', type=str, default='',
                     help='explicit checkpoint path; empty keeps the reconstructed legacy path')
+# 当显式传入训练配置文件时，按其中记录的模型参数创建网络，避免测试结构与 checkpoint 不匹配。
+parser.add_argument('--train_config', type=str, default='',
+                    help='training config.json next to the checkpoint; model settings are loaded from it')
 parser.add_argument('--fusion_mode', type=str, default='p1',
                     choices=['p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'],
                     help='must match the training checkpoint')
@@ -124,6 +129,27 @@ parser.add_argument('--deterministic', type=int, default=1, help='whether use de
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
 # 解析命令行并生成全局 args。
 args = parser.parse_args()
+
+# 训练入口会在每个实验目录保存完整 config.json；测试时优先读取这些已落盘的真实参数。
+# 只覆盖模型结构、融合方式和推理相关参数，不覆盖测试 checkpoint、测试数据路径或数据集选择。
+if args.train_config:
+    if not os.path.isfile(args.train_config):
+        raise FileNotFoundError('Training config not found: {}'.format(args.train_config))
+    with open(args.train_config, 'r', encoding='utf-8') as config_stream:
+        training_config = json.load(config_stream)
+    if training_config.get('dataset', 'Synapse') != 'Synapse':
+        raise ValueError('The selected training config is not for Synapse: {}'.format(args.train_config))
+    config_keys_to_restore = (
+        'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
+        'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
+        'pretrained_dir', 'supervision', 'fusion_mode', 'fusion_loss_weight',
+        'reliability_loss_weight', 'caa_mode', 'caa_residual_scale',
+        'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
+    )
+    for config_key in config_keys_to_restore:
+        if config_key in training_config:
+            setattr(args, config_key, training_config[config_key])
+    print('[INFO] Restored model/test settings from training config:', args.train_config)
 
 # 若总类别数为 14，则准备 13 个前景类别名称；背景仍隐含为索引 0。
 if (args.num_classes == 14):
