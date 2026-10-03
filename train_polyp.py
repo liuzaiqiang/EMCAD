@@ -755,6 +755,9 @@ def main():
         "BUSI": "BUSI",
         "ISIC2017": "ISIC",
         "ISIC2018": "ISIC",
+        # DSB18 和 EM 通过本通用二分类训练循环读取，但归档到独立 Cell 实验族。
+        "DSB18": "Cell",
+        "EM": "Cell",
     }.get(args.dataset_name, "Polyp")
     run_dir = make_experiment_dir(args, output_family)
 
@@ -1051,7 +1054,8 @@ def main():
                 max_cases=args.max_valid_cases,
                 output_dir=None,
                 compute_surface=False,
-                description="Polyp val",
+                # 用 dataset_name 显示实际数据集，避免 Cell/BUSI/ISIC 训练时进度标题仍写 Polyp。
+                description="{} val".format(args.dataset_name),
             )
 
             val_dice = val_mean["dice"]

@@ -12,6 +12,8 @@
 #   DATASET_NAME=ISIC2017 bash sh/run_seed_queue.sh isic 2222 3407
 #   bash sh/run_seed_queue.sh acdc 2222 3407
 #   bash sh/run_seed_queue.sh busi 2222 3407
+#   DATASET_NAME=DSB18 bash sh/run_seed_queue.sh cell 2222 3407
+#   DATASET_NAME=EM bash sh/run_seed_queue.sh cell 2222 3407
 #
 # 可选环境变量：
 #   CUDA_DEVICE=0       选择物理 GPU；不设置时由各启动脚本采用自己的默认值。
@@ -30,7 +32,7 @@ mkdir -p "${QUEUE_LOG_DIR}"
 
 # 至少需要一个启动器名称和一个 seed；在执行任何训练前先验证所有 seed 格式。
 if (( $# < 2 )); then
-  echo "用法: bash sh/run_seed_queue.sh <synapse|acdc|polyp|busi|isic> <seed1> [seed2 ...]" >&2
+  echo "用法: bash sh/run_seed_queue.sh <synapse|acdc|polyp|busi|isic|cell> <seed1> [seed2 ...]" >&2
   echo "示例: DATASET_NAME=Kvasir bash sh/run_seed_queue.sh polyp 2222 3407 5678" >&2
   exit 2
 fi
@@ -43,9 +45,11 @@ case "${DATASET_KEY}" in
   polyp)   LAUNCHER="${SCRIPT_DIR}/start_train_polyp.sh" ;;
   busi)    LAUNCHER="${SCRIPT_DIR}/start_train_busi.sh" ;;
   isic)    LAUNCHER="${SCRIPT_DIR}/start_train_isic.sh" ;;
+  # DSB18 与 EM 共用 Cell 训练启动器，具体数据集由环境变量 DATASET_NAME 选择。
+  cell)    LAUNCHER="${SCRIPT_DIR}/start_train_cell.sh" ;;
   *)
     echo "[ERROR] 不支持的训练启动器: ${DATASET_KEY}" >&2
-    echo "[ERROR] 可选值: synapse, acdc, polyp, busi, isic" >&2
+    echo "[ERROR] 可选值: synapse, acdc, polyp, busi, isic, cell" >&2
     exit 2
     ;;
 esac

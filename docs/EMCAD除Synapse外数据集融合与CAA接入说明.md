@@ -53,33 +53,39 @@ USE_PIXEL_RELIABILITY_FUSION=0 USE_CONTENT_AWARE_ANTIALIAS=0 bash sh/start_train
 
 相同开关也已加入 ACDC、ISIC、BUSI 的训练启动器。关闭融合会把 `fusion_mode` 设为 `p1` 并把 `fusion_loss_weight` 设为 `0`；关闭 CAA 会把 `caa_mode` 设为 `off`。开启融合时可覆盖 `FUSION_LOSS_WEIGHT` 和 `RELIABILITY_LOSS_WEIGHT`；CAA 组件消融可设置 `CAA_MODE=aa_only` 或 `content_only`。每次训练会把有效参数记入日志和 checkpoint 同目录的 `config.json`。
 
-Polyp 通用启动器也用于细胞二分类入口。DSB18 的典型启动参数如下，`DATA_ROOT` 应指向包含 `DSB18` 和 `EM` 子目录的已准备数据根：
+细胞数据现有专用 Cell 包装启动器；训练循环仍复用 `train_polyp.py` 的通用二分类实现。论文对 DSB18 和 EM 使用 256 输入、200 轮、batch size 16，启动器以这些值为默认设置，单卡数 `N_GPU` 默认是 1；仍可通过同名环境变量显式覆盖。`DATA_ROOT` 应指向包含 `DSB18` 和 `EM` 子目录的已准备数据根：
 
 ```bash
-DATASET=Cell DATA_ROOT=/path/to/cell/target DATASET_NAME=DSB18 \
-IMG_SIZE=256 USE_MULTI_SCALE_TRAINING=0 MERGE_INSTANCE_MASKS=1 \
-USE_PIXEL_RELIABILITY_FUSION=1 USE_CONTENT_AWARE_ANTIALIAS=1 \
-bash sh/start_train_polyp.sh
+DATA_ROOT=/path/to/cell/target DATASET_NAME=DSB18 bash sh/start_train_cell.sh
 ```
 
-`DATASET=Cell` 会把这些运行单独归档到默认 `model_pth/Cell`，息肉实验仍使用 `model_pth/Polyp`。
+DSB18 默认打开实例掩膜并集合并；如果已提前把每张图的实例掩膜合并为同名语义掩膜，可设置 `MERGE_INSTANCE_MASKS=0`。EM 默认按一图一掩膜读取；若图像应按灰度单通道读取，设置 `INPUT_CHANNELS=1`。
 
-EM 若使用单通道灰度输入，可在训练时加 `INPUT_CHANNELS=1`；DSB18 彩色输入使用默认 `INPUT_CHANNELS=3`。测试示例：
+队列连续训练 DSB18 的多个 seed：
 
 ```bash
-DATASET=Cell DATA_ROOT=/path/to/cell/target DATASET_NAME=DSB18 \
-IMG_SIZE=256 MERGE_INSTANCE_MASKS=1 CKPT=/path/to/best.pth \
-bash sh/start_test_polyp.sh
+DATA_ROOT=/path/to/cell/target DATASET_NAME=DSB18 \
+bash sh/run_seed_queue.sh cell 2222 3407 5678
 ```
 
-EM 也使用同一入口。下面假设数据已经整理成前述目录，并且 EM 图像是灰度图；若服务器文件是 RGB 或多通道 TIFF，应先确认其读取与颜色语义，再决定 `INPUT_CHANNELS`，不要直接套用该示例：
+把 `DATASET_NAME` 换成 `EM` 可连续运行 EM。队列每轮都会等待当前训练进程退出后再启动下一个 seed。SSH 断开后继续运行可执行：
 
 ```bash
-DATASET=Cell DATA_ROOT=/path/to/cell/target DATASET_NAME=EM \
-IMG_SIZE=256 INPUT_CHANNELS=1 USE_MULTI_SCALE_TRAINING=0 \
-USE_PIXEL_RELIABILITY_FUSION=1 USE_CONTENT_AWARE_ANTIALIAS=1 \
-bash sh/start_train_polyp.sh
+DATA_ROOT=/server/data/cell/target DATASET_NAME=DSB18 \
+nohup bash sh/run_seed_queue.sh cell 2222 3407 5678 >/dev/null 2>&1 < /dev/null &
+echo "QUEUE_PID=$!"
 ```
+
+队列会自行创建 `logs/seed_queue_cell_*.log` 记录 seed 开始、完成和失败状态；`>/dev/null` 避免再额外复制一份相同的队列终端输出。用 `ls -t logs/seed_queue_cell_*.log | head -n 1` 找到最新队列日志，再用 `tail -f <日志路径>` 跟踪。训练 PID 可通过 `bash sh/stop_train_cell.sh <RUN_ID>` 停止；队列 PID 可通过 `kill -TERM <QUEUE_PID>` 停止，队列会向正在运行的训练进程转发终止信号。两类标识均可从启动输出或对应日志中查到。
+
+测试时将 `CKPT` 指向训练实验目录中的 `best.pth`；目录内的 `config.json` 会恢复编码器、输入通道和 DSB18 掩膜解释设置：
+
+```bash
+DATA_ROOT=/path/to/cell/target DATASET_NAME=DSB18 \
+CKPT=/path/to/Cell/experiment/best.pth bash sh/start_test_cell.sh
+```
+
+停止测试可使用 `bash sh/stop_test_cell.sh <RUN_ID>`。训练和测试脚本均保持通用二分类入口已有的数据目录与掩膜语义要求，不自动下载原始数据、不生成 80:10:10 划分，也不将 DSB18 的实例标签转换成实例分割指标。
 
 Polyp、ISIC 和 BUSI 测试启动器默认从 checkpoint 同目录 `config.json` 恢复训练时的融合、CAA、输入尺寸和掩膜解码方式。若显式设置测试开关，指定值必须与 checkpoint 一致；否则会报配置冲突，避免用不匹配的网络解释权重。ACDC 测试同样校验训练配置，并默认采用与当前训练启动器一致的 256 输入。测试结果不用于重新选 checkpoint。
 
@@ -104,7 +110,7 @@ ACDC 的本地清单目录已核实为 `../data/ACDC/lists_ACDC`，含 `train.tx
 
 ## 验证状态和待知情事项
 
-本次验证包含 Python 语法编译、8 个非 Synapse 启动脚本的 Bash 语法检查和 `git diff --check`。当前本机 Python 未安装 PyTorch、OpenCV 或 Albumentations，所以没有执行真实 EMCAD 前向/反向或图像加载；服务器数据上的 DSB18/EM 加载尚待核验。ACDC 代码路径已完成静态检查，但训练/测试仍未由用户在服务器上实测。
+验证方面，`train_polyp.py` 与 `test_polyp.py` 的 Python 语法编译、`git diff --check` 已通过；此前一次检查覆盖过仓库内 25 个 `.sh` 文件。随后新增了 Cell 的 `N_GPU=1` 默认值并调整了通用验证进度标题，但当前 Windows 会话无法启动 Bash/WSL，因此未能在这两处小改动后重新运行 Bash 语法检查或队列 mock。当前 Python 环境未安装 PyTorch、OpenCV 或 Albumentations，没有执行真实 EMCAD 前向/反向或图像加载；服务器上的 DSB18/EM 数据仍待核验。ACDC 代码路径已完成静态检查，但训练/测试尚未在服务器上实测。
 
 当前没有 Dice/HD95 结果。本次改动只表明入口和参数可以按代码契约接线，**效果尚未验证**；不能据此宣称任一数据集提升。正式比较仍需按同一固定清单、相同 seed 配对，报告验证集 checkpoint 选择依据和逐病例结果。
 

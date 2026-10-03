@@ -642,7 +642,8 @@ def main():
         # 计算 HD95/ASSD 表面距离；其单位是原图像素。
         compute_surface=True,
         # tqdm 进度条标题。
-        description="Polyp {}".format(args.split),
+        # 使用实际数据集名称显示进度，Cell 通过通用入口评估时不会误标成 Polyp。
+        description="{} {}".format(args.dataset_name, args.split),
     )
 
     # 保存逐图 rows、宏平均 mean_row 和总体标准差 std_row。
