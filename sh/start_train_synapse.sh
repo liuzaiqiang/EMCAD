@@ -15,7 +15,6 @@ source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
 
 
-#这条命令得到的是项目路径值，而不是sh/下的路径值
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
@@ -25,12 +24,13 @@ mkdir -p "${LOG_DIR}"
 
 # 默认使用 GPU 0；连续队列也可通过 CUDA_DEVICE 覆盖，供启动器之间统一选卡。
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
-
+# 单卡队列默认 n_gpu=1；确定性模式沿用 train_synapse.py 原来的默认值 1。
+N_GPU="${N_GPU:-1}"
 #windows环境下运行时，设置为0（0 表示由主进程加载数据，最稳定）;linux环境下运行时，设置为8。
 NUM_WORKERS=8
 
 SEED="${SEED:-2222}"
-MAX_EPOCHS=300
+MAX_EPOCHS=400
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
@@ -52,18 +52,23 @@ USE_PRETRAIN="${USE_PRETRAIN:-1}"
 PRETRAINED_DIR="${PRETRAINED_DIR:-./pretrained_pth/pvt/}"
 # EMCAD 解码器的主要结构参数；这里显式传给 Python，避免以后 Python 默认值改动造成实验漂移。
 EXPANSION_FACTOR="${EXPANSION_FACTOR:-2}"
-KERNEL_SIZES=(1 3 5)  # MSDC 的三个深度卷积核；数组展开后对应 --kernel_sizes 1 3 5。
+#MSDC 的三个深度卷积核；数组展开后对应 --kernel_sizes 1 3 5。
+KERNEL_SIZES=(1 3 5)
 # 普通字符串供参数清单打印完整数组；Bash 对数组执行 ${!name} 时只会打印首项。
 KERNEL_SIZES_DISPLAY="${KERNEL_SIZES[*]}"
+
 LGAG_KS="${LGAG_KS:-3}"
+
 ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
-# 单卡队列默认 n_gpu=1；确定性模式沿用 train_synapse.py 原来的默认值 1。
-N_GPU="${N_GPU:-1}"
+
+
 DETERMINISTIC="${DETERMINISTIC:-1}"
 # 0 为默认的并行深度卷积与多尺度相加；1 分别启用串行深度卷积/通道拼接。
 NO_DW_PARALLEL="${NO_DW_PARALLEL:-0}"
+
 CONCATENATION="${CONCATENATION:-0}"
-# Python 的布尔开关必须按是否出现来传递，不能传 --no_pretrain 0 这种字符串。
+
+# Python的布尔开关必须按是否出现来传递，不能传 --no_pretrain 0 这种字符串。
 ARCH_FLAGS=()
 case "${USE_PRETRAIN}" in
   0) ARCH_FLAGS+=(--no_pretrain) ;;
@@ -88,7 +93,7 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_encoder_${ENCODER}_imgSize_${IMG_SIZE}_sup
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
-# 0=关闭，1=开启；默认双关闭。
+# 0=关闭，1=开启；默认双关闭,即为基础模型。
 USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
 USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 

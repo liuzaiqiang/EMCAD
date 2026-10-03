@@ -18,6 +18,7 @@ mkdir -p "${LOG_DIR}"
 CONDA_BASE="${CONDA_BASE:-/home/mlf/anaconda3}"
 CONDA_ENV_PREFIX="${CONDA_ENV_PREFIX:-${CONDA_BASE}/envs/sld_emcad}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+
 if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
   source "${CONDA_BASE}/etc/profile.d/conda.sh"
   conda activate "${CONDA_ENV_PREFIX}"

@@ -28,21 +28,15 @@ LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 
-# 只有 conda 初始化脚本存在时才激活环境；不存在时继续使用当前 shell 的 Python 环境。
-if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
-  source "${CONDA_BASE}/etc/profile.d/conda.sh"
-  conda activate "${CONDA_ENV_PREFIX}"
-fi
-
-
-
-
 
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
+N_GPU="${N_GPU:-1}"
+
 
 export PYTHONUNBUFFERED=1
+
 SEED="${SEED:-2222}"
-IMG_SIZE="${IMG_SIZE:-256}"
+IMG_SIZE="${IMG_SIZE:-224}"
 BATCH_SIZE="${BATCH_SIZE:-12}"
 MAX_EPOCHS="${MAX_EPOCHS:-400}"
 
@@ -50,9 +44,8 @@ MAX_EPOCHS="${MAX_EPOCHS:-400}"
 DATASET="ACDC"
 BASE_LR="${BASE_LR:-1e-4}"
 SUPERVISION="${SUPERVISION:-mutation}"
-NUM_WORKERS="${NUM_WORKERS:-0}"
-# ACDC defaults to one visible GPU; override N_GPU when deliberately using multiple visible cards.
-N_GPU="${N_GPU:-1}"
+NUM_WORKERS="${NUM_WORKERS:-8}"
+
 
 DETERMINISTIC="${DETERMINISTIC:-1}"
 
@@ -84,12 +77,14 @@ PID_FILE="${RUN_ID}.pid"
 
 
 # 两个模块分别消融；设置为0时参数明确传为p1或off，相关网络结构/损失不会启用。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
+
 FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
 FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
 RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
 CAA_MODE="${CAA_MODE:-caa}"
+
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 case "${USE_PIXEL_RELIABILITY_FUSION}" in
   0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
