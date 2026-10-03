@@ -23,11 +23,8 @@ conda activate "${CONDA_ENV_PREFIX}"
 
 
 
-# conda初始化脚本存在才激活环境，否则使用当前shell已有环境。
-if [[ -f "${CONDA_BASE}/etc/profile.d/conda.sh" ]]; then
-  source "${CONDA_BASE}/etc/profile.d/conda.sh"
-  conda activate "${CONDA_ENV_NAME}"
-fi
+# 上方已使用明确的 CONDA_ENV_PREFIX 激活 BUSI 环境；这里不再重复激活，
+# 避免引用未定义的 CONDA_ENV_NAME，并确保被连续调度器 source 时可正常运行。
 
 # 选择GPU并让Python输出不缓冲，减少日志延迟。
 export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"

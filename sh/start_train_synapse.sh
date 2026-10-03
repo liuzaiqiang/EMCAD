@@ -23,12 +23,13 @@ cd "${PROJECT_DIR}"
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
-export CUDA_VISIBLE_DEVICES=0
+# 默认使用 GPU 0；连续队列也可通过 CUDA_DEVICE 覆盖，供启动器之间统一选卡。
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 
 #windows环境下运行时，设置为0（0 表示由主进程加载数据，最稳定）;linux环境下运行时，设置为8。
 NUM_WORKERS=8
 
-SEED=2222
+SEED="${SEED:-2222}"
 MAX_EPOCHS=300
 DATASET="Synapse"
 IMG_SIZE=224
@@ -99,6 +100,8 @@ PARAM_NAMES=(
 
 
 # 启动命令块：nohup使进程忽略终端挂断信号；env把RUN_ID写入子进程环境，停止脚本会读取它防止PID复用误杀。  >> 追加标准输出，2>&1把标准错误并入同一日志，< /dev/null断开标准输入
+# 参数列表和日志重定向必须属于同一条 shell 命令；最后一个参数行用反斜杠续接重定向行，
+# 这样 $! 才会记录真正运行 Python 训练的后台进程，且 stdout/stderr 会进入本次训练日志。
 nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
@@ -113,7 +116,6 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
-
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

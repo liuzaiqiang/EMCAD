@@ -115,9 +115,7 @@ nohup env RUN_ID="${RUN_ID}"   python -u test_synapse.py \
   --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
   --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
   --caa_mode "${CAA_MODE}" \
-  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
-
-
+  --caa_residual_scale "${CAA_RESIDUAL_SCALE}"
   >> "${LOG_FILE}" 2>&1 &
 
 
