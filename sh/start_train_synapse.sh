@@ -9,8 +9,6 @@ set -euo pipefail
 # CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
 CONDA_BASE="/home/mlf/anaconda3"
 CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
-
-
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
 
@@ -95,6 +93,7 @@ PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
 # 0=关闭，1=开启；默认双关闭,即为基础模型。
 USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
+#1：允许使用 CAA   0：强制关闭 CAA，使用原始 EUCB 上采样路径
 USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 
 RELIABILITY_LOSS_WEIGHT="1"

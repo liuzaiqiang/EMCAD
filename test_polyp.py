@@ -15,6 +15,7 @@ from pathlib import Path
 
 # torch 仅用于版本/CUDA 环境记录；模型推理封装在 utils.polyp_utils 中。
 import torch
+from lib.benchmarking import InferenceBenchmark, log_environment, log_json, reset_peak_memory, peak_memory_mb
 
 # 数据加载器同时暴露支持扩展名集合，供划分泄漏检查复用同一文件口径。
 from utils.dataloader_polyp import (
@@ -589,6 +590,10 @@ def main():
 
     # 记录完整 Namespace，便于复现实验命令。
     logging.info("args=%s", args)
+    # 记录本次测试的硬件和软件环境，避免只保存 Dice 而无法复现实验条件。
+    benchmark_env = log_environment(logging, device)
+    benchmark = InferenceBenchmark()
+    reset_peak_memory(device)
     # 记录最终设备。
     logging.info("device=%s", device)
     # 记录严格配对后实际可评估的图像数量。
@@ -646,7 +651,20 @@ def main():
         # tqdm 进度条标题。
         # 使用实际数据集名称显示进度，Cell 通过通用入口评估时不会误标成 Polyp。
         description="{} {}".format(args.dataset_name, args.split),
+        benchmark=benchmark,
     )
+
+    # 这里统计的是完整评估循环的峰值；它包含模型、输入、临时张量以及 CUDA 工作区。
+    benchmark_result = benchmark.result(
+        device=device,
+        warmup=0,
+        repetitions=1,
+        batch_size=args.inference_batch_size,
+        input_size=args.img_size,
+        precision="float32",
+    )
+    benchmark_result["environment"] = benchmark_env
+    log_json(logging, "BENCHMARK_INFERENCE", benchmark_result)
 
     # 保存逐图 rows、宏平均 mean_row 和总体标准差 std_row。
     write_metrics_csv(
@@ -662,6 +680,9 @@ def main():
 
     # 组装包含数据、配置、指标口径和运行环境的完整摘要。
     report = {
+        # 结构化记录测试阶段的前向时间、端到端时间和峰值显存，
+        # 与 test.log 中的 BENCHMARK_INFERENCE 行保持完全一致。
+        "benchmark": benchmark_result,
         # 数据集名。
         "dataset_name": args.dataset_name,
         # 实际评估 val/test。

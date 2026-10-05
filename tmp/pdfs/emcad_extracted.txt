@@ -1,0 +1,850 @@
+\n\n===== PAGE 1 =====\n\nEMCAD: Efficient Multi-scale Convolutional Attention Decoding for Medical
+Image Segmentation
+MdMostafijurRahman,MustafaMunir,andRaduMarculescu
+TheUniversityofTexasatAustin
+Austin,Texas,USA
+mostafijur.rahman, mmunir, radum@utexas.edu
+Abstract tation output. Attention mechanisms [12, 17, 20, 41, 57]
+havealsobeenintegratedintothesemodelstoenhancefea-
+Anefficientandeffectivedecodingmechanismiscrucial turemapsandimprovepixel-levelclassification. Although
+inmedicalimagesegmentation,especiallyinscenarioswith attention-basedmodelshaveshownimprovedperformance,
+limitedcomputationalresources. However, thesedecoding theystillfacesignificantchallengesduetothecomputation-
+mechanisms usually come with high computational costs. ally expensive convolutional blocks that are typically used
+Toaddressthisconcern,weintroduceEMCAD,aneweffi- inconjunctionwithattentionmechanisms.
+cientmulti-scaleconvolutionalattentiondecoder,designed Recently, vision transformers [18] have shown promise
+tooptimizebothperformanceandcomputationalefficiency. in medical image segmentation tasks [5, 8, 17, 42, 43, 52,
+EMCADleverages auniquemulti-scaledepth-wise convo- 54, 61] by capturing long-range dependencies among pix-
+lution block, significantly enhancing feature maps through els through Self-attention (SA) mechanisms. Hierarchical
+multi-scale convolutions. EMCAD also employs channel, visiontransformerslikeSwin[34],PVT[55,56],MaxViT
+spatial, and grouped (large-kernel) gated attention mech- [49],MERIT[43],ConvFormer[33],andMetaFormer[59]
+anisms, which are highly effective at capturing intricate havebeenintroducedtofurtherimprovetheperformancein
+spatial relationships while focusing on salient regions. By thisfield. WhiletheSAexcelsatcapturingglobalinforma-
+employing group and depth-wise convolution, EMCAD is tion,itislessadeptatunderstandingthelocalspatialcontext
+very efficient and scales well (e.g., only 1.91M parame- [13,28]. Toaddressthislimitation,someapproacheshave
+ters and 0.381G FLOPs are needed when using a stan- integratedlocalconvolutionalattentionwithinthedecoders
+dardencoder).Ourrigorousevaluationsacross12datasets to better grasp spatial details. Nevertheless, these meth-
+that belong to six medical image segmentation tasks re- ods can still be computationally demanding because they
+vealthatEMCADachievesstate-of-the-art(SOTA)perfor- frequentlyemploycostlyconvolutionalblocks. Thislimits
+mance with 79.4% and 80.3% reduction in #Params and their applicability to real-world scenarios where computa-
+#FLOPs, respectively. Moreover, EMCAD’s adaptability tionalresourcesarerestricted.
+to different encoders and versatility across segmentation Toaddresstheaforementionedlimitations,weintroduce
+tasks further establish EMCAD as a promising tool, ad- EMCAD, an efficient multi-scale convolutional attention
+vancingthefieldtowardsmoreefficientandaccuratemed- decoding using a new multi-scale depth-wise convolution
+ical image analysis. Our implementation is available at block. Moreprecisely,EMCADenhancesthefeaturemaps
+https://github.com/SLDGroup/EMCAD. via efficient multi-scale convolutions, while incorporating
+complexspatialrelationshipsandlocalattentionthroughthe
+useofchannel,spatial,andgrouped(large-kernel)gatedat-
+1.Introduction
+tentionmechanisms. Ourcontributionsareasfollows:
+In the realm of medical diagnostics and therapeutic strate- • New Efficient Multi-scale Convolutional Decoder:
+gies,automatedsegmentationofmedicalimagesisvital,as We introduce an efficient multi-scale cascaded fully-
+itclassifiespixelstoidentifycriticalregionssuchaslesions, convolutional attention decoder (EMCAD) for 2D med-
+tumors, or entire organs. A variety of U-shaped convolu- ical image segmentation; this takes the multi-stage fea-
+tional neural network (CNN) architectures [20, 24, 37, 41, tures of vision encoders and progressively enhances the
+44,62],notablyUNet[44],UNet++[62],UNet3+[24],and multi-scale and multi-resolution spatial representations.
+nnU-Net [19], have become standard techniques for this EMCADhasonly0.506Mparametersand0.11GFLOPs
+purpose, achieving high-quality, high-resolution segmen- for a tiny encoder with #channels = [32, 64, 160, 256],
+1
+4202
+yaM
+11
+]VI.ssee[
+1v08860.5042:viXra\n\n===== PAGE 2 =====\n\nficiency in handling spatial relationships in images. More
+precisely,AlexNet[32]andVGG[46]pavetheway,lever-
+aging deep layers of convolutions to extract features pro-
+gressively. GoogleNet [47] introduces the inception mod-
+ule,allowingmoreefficientcomputationofrepresentations
+acrossvariousscales. ResNet[21]introducesresidualcon-
+nections, enabling the training of networks with substan-
+tially more layers by addressing the vanishing gradients
+problem. MobileNets [22, 45] bring CNNs to mobile de-
+vices through lightweight, depth-wise separable convolu-
+tions. EfficientNet [48] introduces a scalable architectural
+design to CNNs with compound scaling. Although CNNs
+arepivotalformanyvisionapplications,theygenerallylack
+Figure1.AverageDICEscoresvs.#FLOPsfordifferentmethods
+over10binarymedicalimagesegmentationdatasets. Asshown, the ability to capture long-range dependencies within im-
+our approaches (PVT-EMCAD-B0 and PVT-EMCAD-B2) have agesduetotheirinherentlocalreceptivefields.
+thelowest#FLOPs,yetthehighestDICEscores. Recently, Vision Transformers (ViTs), pioneered by
+Dosovitskiyetal. [18], enabledthelearningoflong-range
+while it has 1.91M parameters and 0.381G FLOPs for a relationshipsamongpixelsusingSelf-attention(SA).Since
+standardencoderwith#channels=[64,128,320,512]. then, ViTs have been enhanced by integrating CNN fea-
+• Efficient Multi-scale Convolutional Attention Mod- tures [49, 56], developing novel self-attention (SA) blocks
+ule: We introduce MSCAM, a new efficient multi-scale [34,49],andintroducingnewarchitecturaldesigns[55,58].
+convolutionalattentionmodulethatperformsdepth-wise The Swin Transformer [34] incorporates a sliding window
+convolutions at multiple scales; this refines the feature attentionmechanism,whileSegFormer[58]leveragesMix-
+maps produced by vision encoders and enables captur- FFNblocksforhierarchicalstructures. PVT[55]usesspa-
+ing multi-scale salient features by suppressing irrele- tial reduction attention, refined in PVTv2 [56] with over-
+vantregions. Theuseofdepth-wiseconvolutionsmakes lappingpatchembeddingandalinearcomplexityattention
+MSCAMveryefficient. layer. MaxViT [49] introduces a multi-axis self-attention
+• Large-kernel Grouped Attention Gate: We introduce toformahierarchicalCNN-transformerencoder. Although
+anewgroupedattentiongatetofuserefinedfeatureswith ViTs address the CNNs limitation in capturing long-range
+thefeaturesfromskipconnections.Byusinglargerkernel pixeldependencies[21–23,32,35,45–48],theyfacechal-
+(3×3)groupconvolutionsinsteadofpoint-wiseconvolu- lenges in capturing the local spatial relationships among
+tionsinthedesign,wecapturesalientfeaturesinalarger pixels. In this paper, we aim to overcome these limita-
+localcontextwithlesscomputation. tions by introducing a new multi-scale cascaded attention
+• ImprovedPerformance: WeempiricallyshowthatEM- decoderthatrefinesfeaturemapsandincorporateslocalat-
+CAD can be used with any hierarchical vision encoder tentionusingamulti-scaleconvolutionalattentionmodule.
+(e.g., PVTv2-B0, PVTv2-B2 [56]), while significantly
+improving the performance of 2D medical image seg- 2.2.Medicalimagesegmentation
+mentation. EMCAD produces better results than SOTA
+Medicalimagesegmentationinvolvespixel-wiseclassifica-
+methodswithasignificantlylowercomputationalcost(as
+tion to identify various anatomical structures like lesions,
+shown in Figure 1) on 12 medical image segmentation
+tumors,ororganswithindifferentimagingmodalitiessuch
+benchmarksthatbelongtosixdifferenttasks.
+as endoscopy, MRI, or CT scans [8]. U-shaped networks
+The remaining of this paper is organized as follows:
+[7, 19, 24, 26, 37, 41, 44, 62] are particularly favored due
+Section 2 summarizes related work. Section 3 describes
+to their simple but effective encoder-decoder design. The
+theproposedmethod. Section4explainsourexperimental
+UNet [44] pioneered this approach with its use of skip
+setupandresultson12medicalimagesegmentationbench-
+connections to fuse features at different resolution stages.
+marks. Section 5 covers different ablation experiments.
+UNet++ [62] evolves this design by incorporating nested
+Lastly,Section6concludesthepaper.
+encoder-decoder pathways with dense skip connections.
+Expandingontheseideas,UNet3+[24]introducescompre-
+2.RelatedWork
+hensiveskippathwaysthatfacilitatefull-scalefeatureinte-
+gration. Further advancement comes with DC-UNet [37],
+2.1.Visionencoders
+whichintegratesamulti-resolutionconvolutionschemeand
+Convolutional Neural Networks (CNNs) [21–23, 32, 35, residual paths into its skip connections. The DeepLab se-
+45–48]havebeenfoundationalasencodersduetotheirpro- ries, including DeepLabv3 [10] and DeepLabv3+ [11], in-
+2\n\n===== PAGE 3 =====\n\ntroduceatrousconvolutionsandspatialpyramidpoolingto scale convolutional attention modules (MSCAMs) to ro-
+handlemulti-scaleinformation.SegNet[2]usespoolingin- bustly enhance the feature maps, large-kernel grouped at-
+dices to upsample feature maps, preserving the boundary tention gates (LGAGs) to refine feature maps fusing with
+details. nnU-Net [19] automatically configures hyperpa- theskipconnectionviagatedattentionmechanism,efficient
+rametersbasedonthespecificdatasetcharacteristics,using up-convolution blocks (EUCBs) for up-sampling followed
+standard 2D and 3D UNets. Collectively, these U-shaped by enhancement of feature maps, and segmentation heads
+modelshavebecomeabenchmarkforsuccessinthedomain (SHs)toproducethesegmentationoutputs.
+ofmedicalimagesegmentation. Morespecifically,weusefourMSCAMstorefinepyra-
+Recently, vision transformers have emerged as a midfeatures(i.e.,X1,X2,X3,X4inFigure2)extracted
+formidable force in medical image segmentation, harness- from the four stages of the encoder. After each MSCAM,
+ingtheabilitytocapturepixelrelationshipsatglobalscales weuseanSHtoproduceasegmentationmapofthatstage.
+[5,8,17,42,43,52,58,61].TransUNet[8]presentsanovel Subsequently, we upscale the refined feature maps using
+blend of CNNs for local feature extraction and transform- EUCBsandaddthemtotheoutputsfromthecorresponding
+ersforglobalcontext,enhancingbothlocalandglobalfea- LGAGs. Finally, weaddfourdifferentsegmentationmaps
+ture capture. Swin-Unet [5] extends this by incorporating toproducethefinalsegmentationoutput.Differentmodules
+Swin Transformer blocks [34] into a U-shaped model for ofourdecoderaredescribednext.
+both encoding and decoding processes. Building on these
+concepts, MERIT [43] introduces a multi-scale hierarchi-
+caltransformer,whichemploysSAacrossdifferentwindow 3.1.1 Large-kernelgroupedattentiongate(LGAG)
+sizes, thus enhancing the model capacity to capture multi-
+scalefeaturescriticalformedicalimagesegmentation. We introduce a new large-kernel grouped attention gate
+(LGAG)toprogressivelycombinefeaturemapswithatten-
+The integration of attention mechanisms has been in-
+tioncoefficients,whicharelearnedbythenetworktoallow
+vestigated within CNNs [20, 41] and transformer-based
+higheractivationofrelevantfeaturesandsuppressionofir-
+systems [17] for enhancing medical image segmentation.
+relevantones. Thisprocessemploysagatingsignalderived
+PraNet [20] employs a reverse attention strategy for fea-
+from higher-level features to control the flow of informa-
+ture refinement. PolypPVT [17] leverages PVTv2 [56] as
+tion across different stages of the network, thus enhancing
+its backbone encoder and incorporates CBAM [57] within
+its precision for medical image segmentation. Unlike At-
+its decoding stages. The CASCADE [42] presents a novel
+tentionUNet[41]whichuses1×1convolutiontoprocess
+cascaded decoder, combining channel [23] and spatial [9]
+gating signal g (features from skip connections) and input
+attentiontorefinefeaturesatmultiplestages,extractedfrom
+feature map x (upsampled features), in our q (.) func-
+a transformer encoder, culminating in high-resolution seg- att
+tion,weprocessg andxbyapplyingseparate3×3group
+mentationoutputs. WhileCASCADEachievesnotableper-
+convolutionsGC (.) andGC (.),respectively. Thesecon-
+formance in segmenting medical images by integrating lo- g x
+volvedfeaturesarethennormalizedusingbatchnormaliza-
+calandglobalinsightsfromtransformers,itiscomputation-
+allyinefficientduetotheuseoftriple3×3convolutionlay- tion(BN(.)) [27]andmergedthroughelement-wiseaddi-
+tion. TheresultantfeaturemapisactivatedthroughaReLU
+ersateachdecoderstage. Inadditiontothis,itusessingle-
+(R(.)) layer [39]. Afterward, we apply a 1×1 convolu-
+scale convolutions during decoding. Our new proposal in-
+tion(C(.)) followedbyBN(.) layertogetasinglechannel
+volvestheadoptionofmulti-scaledepth-wiseconvolutions
+featuremap. Wethenpasstheresultantsingle-channelfea-
+tomitigatetheseconstraints.
+ture map through a Sigmoid (σ(.)) activation function to
+3.Methodology yieldtheattentioncoefficients. Theoutputofthistransfor-
+mationisusedtoscaletheinputfeaturexthroughelement-
+In this section, we first introduce our new EMCAD de-
+wise multiplication, producing the attention-gated feature
+coderandthenexplaintwotransformer-basedarchitectures
+LGAG(g,x). The LGAG(·) (Figure 2(g)) can be formu-
+(i.e., PVT-EMCAD-B0andPVT-EMCAD-B2)incorporat-
+latedasinEquations1and2:
+ingourproposeddecoder.
+3.1.Efficientmulti-scaleconvolutionalattentionde- q att (g,x)=R(BN(GC g (g)+BN(GC x (x))))) (1)
+coding(EMCAD)
+In this section, we introduce our efficient multi-scale con-
+LGAG(g,x)=x⊛σ(BN(C(q (g,x)))) (2)
+volutional decoding (EMCAD) to process the multi-stage att
+features extracted from pretrained hierarchical vision en-
+Duetousing3×3kernelgroupconvolutionsinq (.),our
+att
+coders for high-resolution semantic segmentation. As
+LGAG captures comparatively larger spatial contexts with
+shown in Figure 2(b), EMCAD consits of efficient multi-
+lesscomputationalcost.
+3\n\n===== PAGE 4 =====\n\nFigure2.HierarchicalencoderwithnewlyproposedEMCADdecoderarchitecture.(a)CNNortransformerencoderwithfourhierarchical
+stages,(b)EMCADdecoder,(c)Efficientup-convolutionblock(EUCB),(d)Multi-scaleconvolutionalattentionmodule(MSCAM),(e)
+Multi-scaleconvolutionblock(MSCB),(f)Multi-scale(parallel)depth-wiseconvolution(MSDC),(g)Large-kernelgroupedattentiongate
+(LGAG),(h)Channelattentionblock(CAB),and(i)Spatialattentionblock(SAB).X1, X2, X3, andX4arethefeaturesfromthefour
+stagesofthehierarchicalencoder.p1,p2,p3,andp4areoutputsegmentationmapsfromfourstagesofourdecoder.
+3.1.2 Multi-scale convolutional attention module therelationshipsamongchannels,weuseachannel shuffle
+(MSCAM) operationtoincorporaterelationshipsamongchannels. Af-
+terward, we use another point-wise convolution PWC (.)
+2
+We introduce an efficient multi-scale convolutional atten-
+followedbyaBN(.) totransformbacktheoriginal#chan-
+tion module to refine the feature maps. MSCAM consists
+nels,whichalsoencodesdependencyamongchannels. The
+of a channel attention block (CAB(·)) to put emphasis on
+MSCB(·)(Figure2(e))isformulatedasinEquation4:
+pertinent channels, a spatial attention block [9] (SAB(·))
+to capture the local contextual information, and an effi- MSCB(x)=BN(PWC2(CS(MSDC(R6(BN(PWC1(x))))))) (4)
+cientmulti-scaleconvolutionblock(MSCB(.))toenhance
+whereparallelMSDC(.) (Figure2(f))fordifferentkernel
+the feature maps preserving contextual relationships. The
+sizes(KS)canbeformulatedusingEquation5:
+MSCAM(.) (Figure2(d))isgiveninEquation3:
+(cid:80)
+MSDC(x)= DWCB (x) (5)
+MSCAM(x)=MSCB(SAB(CAB(x))) (3) ks∈KS ks
+where x is the input tensor. Due to using depth-wise con- where DWCB ks (x) = R6(BN(DWC ks (x))). Here,
+DWC (.) is a depth-wise convolution with the kernel
+volution in multiple scales, our MSCAM is more effective ks
+size ks. BN(.) and R6(.) are batch normalization
+withsignificantlylowercomputationalcostthantheconvo-
+and ReLU6 activation, respectively. Additionally, our se-
+lutionalattentionmodule(CAM)proposedin[42].
+quential MSDC(.) uses the recursively updated input x,
+Multi-scaleConvolutionBlock(MSCB):Weintroduce
+where the input x is residually connected to the previous
+an efficient multi-scale convolution block to enhance the
+DWCB (.) forbetterregularizationasinEquation6:
+featuresgeneratedbyourcascadedexpandingpath. Inour ks
+MSCB,wefollowthedesignoftheinvertedresidualblock
+x=x+DWCB (x) (6)
+ks
+(IRB) of MobileNetV2 [45]. However, unlike IRB, our
+MSCBperformsdepth-wiseconvolutionatmultiplescales Channel Attention Block (CAB): We use channel at-
+and uses channel shuffle [60] to shuffle channels across tentionblocktoassigndifferentlevelsofimportancetoeach
+groups. More specifically, in our MSCB, we first expand channel, thus emphasizing more relevant features while
+thenumberofchannels(i.e.,expansion factor=2)usinga suppressing less useful ones. Basically, the CAB identi-
+point-wise(1×1)convolutionlayersPWC (·)followedby fieswhichfeaturemapstofocuson(andthenrefinethem).
+1
+abatchnormalizationlayerBN(·)andaReLU6[31]activa- Following [57], in CAB, we first apply the adaptive maxi-
+tionlayerR6(.). Wethenuseamulti-scaledepth-wisecon- mumpooling(P (·))andadaptiveaveragepooling(P (·))
+m a
+volutionMSDC(.) tocapturebothmulti-scaleandmulti- tothespatialdimensions(i.e., heightandwidth)toextract
+resolution contexts. As depth-wise convolution overlooks the most significant feature of the entire feature map per
+4\n\n===== PAGE 5 =====\n\nchannel. Then, for each pooled feature map, we reduce produces output with #channels equal to #classes in target
+the number of channels r = 1/16 times separately using dataset for multi-class but 1 channel for binary segmenta-
+a point-wise convolution (C (·)) followed by a ReLU ac- tion. TheSH(·)isformulatedasinEquation10:
+1
+tivation (R). Afterward, we recover the original channels
+SH(x)=Conv (x) (10)
+usinganotherpoint-wiseconvolution(C (·)). Wethenadd 1×1
+2
+bothrecoveredfeaturemapsandapplySigmoid(σ)activa- 3.2.Overallarchitecture
+tion to estimate attention weights. Finally, we incorporate
+these weights to input x using the Hadamard product (⊛). Toshowthegeneralization,effectiveness,andabilitytopro-
+TheCAB(·)(Figure2(h))isdefinedusingEquation7: cess multi-scale features for medical image segmentation,
+weintegrateourEMCADdecoderalongsidetiny(PVTv2-
+CAB(x)=σ(C (R(C (P (x))))+C (R(C (P (x)))))⊛x (7) B0) and standard (PVTv2-B2) networks of PVTv2 [56].
+2 1 m 2 1 a
+However,ourdecoderisadaptableandseamlesslycompat-
+Spatial Attention Block (SAB): We use spatial atten-
+iblewithotherhierarchicalbackbonenetworks.
+tion to mimic the attentional processesof the human brain
+PVTv2differsfromconventionaltransformerpatchem-
+byfocusingonspecificpartsofaninputimage. Basically,
+theSABdetermineswheretofocusinafeaturemap;thenit bedding modules by applying convolutional operations for
+enhancesthosefeatures. Thisprocessenhancesthemodel’s consistent spatial information capture. Using PVTv2-b0
+abilitytorecognizeandrespondtorelevantspatialfeatures, (Tiny)andPVTv2-b2(Standard)encoders[56],wedevelop
+whichiscrucialforimagesegmentationwherethecontext the PVT-EMCAD-B0and PVT-EMCAD-B2 architectures.
+and location of objects significantly influence the output. ToadoptPVTv2,wefirstextractthefeatures(X1,X2,X3,
+In SAB, we first pool maximum (Ch max (·)) and average andX4)fromfourlayersandfeedthem(i.e.,X4intheup-
+(Ch (·))valuesalongthechanneldimensiontopayatten-
+avg sample path and X3, X2, X1 in the skip connections) into
+tiontolocalfeatures.Then,weusealargekernel(i.e.,7×7
+ourEMCADdecoderasshowninFigure2(a-b). EMCAD
+asin[17])convolutionlayertoenhancelocalcontextualre-
+thenprocessesthemandproducesfoursegmentationmaps
+lationships among features. Afterward, we apply the Sig-
+thatcorrespondtothefourstagesoftheencodernetwork.
+moid activation (σ) to calculate attention weights. Finally,
+wefeedtheseweightstotheinputx(usingHadamardprod- 3.3.Multi-stagelossandoutputsaggregation
+uct (⊛) to attend information in a more targeted way. The
+Our EMCAD decoder’s four segmentation heads produce
+SAB(.) (Figure2(i))isdefinedusingEquation8:
+fourpredictionmapsp ,p ,p ,andp acrossitsstages.
+1 2 3 4
+SAB(x)=σ(LKC([Ch (x),Ch (x)]))⊛x (8) Loss aggregation: We adopt a combinatorial approach
+max avg
+to loss combination called MUTATION, inspired by the
+3.1.3 Efficientup-convolutionblock(EUCB) work of MERIT [43] for multi-class segmentation. This
+involves calculating the loss for all possible combinations
+We use an efficient up-convolution block to progressively
+of predictions derived from 4 heads, totaling 24 −1 = 15
+upsamplethefeaturemapsofthecurrentstagetomatchthe
+uniquepredictions,andthensummingtheselosses. Wefo-
+dimensionandresolutionofthefeaturemapsfromthenext
+cus on minimizing this cumulative combinatorial loss dur-
+skipconnection.TheEUCBfirstusesanUpSamplingUp(·)
+ing the training process. For binary segmentation, we op-
+with scale-factor 2 to upscale the feature maps. Then, it
+timize the additive loss like [42] with an additional term
+enhances the upscaled feature maps by applying a 3 × 3
+L asinEquation11:
+depth-wiseconvolutionDWC(·)followedbyaBN(·)and p1+p2+p3+p4
+aReLU(.) activation. Finally,a1×1convolutionC 1×1 (.) L total =αL p1 +βL p2 +γL p3 +ζL p4 +δL p1+p2+p3+p4 (11)
+isusedtoreducethe#channelstomatchwiththenextstage. where L , L , L , and L are the losses of each indi-
+TheEUCB(·)(Figure2(c))isformulatedasinEquation9: vidualpr p e 1 dicti p o 2 nm p a 3 ps. α = p β 4 =γ =ζ =δ =1.0arethe
+weightsassignedtoeachloss.
+Outputsegmentationmapsaggregation: Weconsider
+EUCB(x)=C (ReLU(BN(DWC(Up(x))))) (9)
+1×1 thepredictionmap,p ,fromthelaststageofourdecoderas
+4
+Duetousingdepth-wiseconvolutioninsteadof3×3con- thefinalsegmentationmap. Then, weobtainthefinalseg-
+volution,ourEUCBisveryefficient.
+mentationoutputbyemployingaSigmoidfunctionforbi-
+naryoraSoftmaxfunctionformulti-classsegmentation.
+3.1.4 Segmentationhead(SH)
+4.Experiments
+We use segmentation heads to produce the segmentation
+outputs from the refined feature maps of four stages of Inthissection,wepresentthedetailsofourimplementation
+the decoder. The SH layer applies a 1 × 1 convolution followed by a comparative analysis of our PVT-EMCAD-
+Conv (·) to the refined feature maps having ch chan- B0andPVT-EMCAD-B2againstSOTAmethods. Datasets
+1×1 i
+nels(ch isthe#channelsinthefeaturemapofstagei)and andevaluationmetricsareinSupplementarySection7.
+i
+5\n\n===== PAGE 6 =====\n\nPolyp SkinLesion Cell
+Methods #Params #FLOPs BUSI Avg.
+Clinic Colon ETIS Kvasir BKAI ISIC17 ISIC18 DSB18 EM
+UNet[44] 34.53M 65.53G 92.11 83.95 76.85 82.87 85.05 83.07 86.67 92.23 95.46 74.04 85.23
+UNet++[62] 9.16M 34.65G 92.17 87.88 77.40 83.36 84.07 82.98 87.46 91.97 95.48 74.76 85.75
+AttnUNet[41] 34.88M 66.64G 92.20 86.46 76.84 83.49 84.07 83.66 87.05 92.22 95.55 74.48 85.60
+DeepLabv3+[10] 39.76M 14.92G 93.24 91.92 90.73 89.06 89.74 83.84 88.64 92.14 94.96 76.81 89.11
+PraNet[20] 32.55M 6.93G 91.71 89.16 83.84 84.82 85.56 83.03 88.56 89.89 92.37 75.14 86.41
+CaraNet[38] 46.64M 11.48G 94.08 91.19 90.25 89.74 89.71 85.02 90.18 89.15 92.78 77.34 88.94
+UACANet-L[30] 69.16M 31.51G 94.16 91.02 89.77 90.17 90.35 83.72 89.76 88.86 89.28 76.96 88.41
+SSFormer-L[54] 66.22M 17.28G 94.18 92.11 90.16 91.47 91.14 85.28 90.25 92.03 94.95 78.76 90.03
+PolypPVT[17] 25.11M 5.30G 94.13 91.53 89.93 91.56 91.17 85.56 90.36 90.69 94.40 79.35 89.87
+TransUNet[8] 105.32M 38.52G 93.90 91.63 87.79 91.08 89.17 85.00 89.16 92.04 95.27 78.30 89.33
+SwinUNet[5] 27.17M 6.2G 92.42 89.27 85.10 89.59 87.61 83.97 89.26 91.03 94.47 77.38 88.01
+TransFuse[61] 143.74M 82.71G 93.62 90.35 86.91 90.24 87.47 84.89 89.62 90.85 94.35 79.36 88.77
+UNeXt[50] 1.47M 0.57G 90.20 83.84 74.03 77.88 77.93 82.74 87.78 86.01 93.81 74.71 82.89
+PVT-CASCADE[42] 34.12M 7.62G 94.53 91.60 91.03 92.05 92.14 85.50 90.41 92.35 95.42 79.21 90.42
+PVT-EMCAD-B0(Ours) 3.92M 0.84G 94.60 91.71 91.65 91.95 91.30 85.67 90.70 92.46 95.35 79.80 90.52
+PVT-EMCAD-B2(Ours) 26.76M 5.6G 95.21 92.31 92.29 92.75 92.96 85.95 90.96 92.74 95.53 80.25 91.10
+Table1.Resultsofbinarymedicalimagesegmentation(i.e.,polyp,skinlesion,cell,andbreastcancer).WereproducetheresultsofSOTA
+methodsusingtheirpubliclyavailableimplementationwithourtrain-val-testsplitsof80:10:10. #FLOPsofallthemethodsarereported
+for256×256inputs,exceptSwin-UNet(224×224).Allresultsareaveragedoverfiveruns.Bestresultsareshowninbold.
+Average
+Architectures Aorta GB KL KR Liver PC SP SM
+DICE↑ HD95↓ mIoU↑
+UNet[44] 70.11 44.69 59.39 84.00 56.70 72.41 62.64 86.98 48.73 81.48 67.96
+AttnUNet[41] 71.70 34.47 61.38 82.61 61.94 76.07 70.42 87.54 46.70 80.67 67.66
+R50+UNet[8] 74.68 36.87 − 84.18 62.84 79.19 71.29 93.35 48.23 84.41 73.92
+R50+AttnUNet[8] 75.57 36.97 − 55.92 63.91 79.20 72.71 93.56 49.37 87.19 74.95
+SSFormer[54] 78.01 25.72 67.23 82.78 63.74 80.72 78.11 93.53 61.53 87.07 76.61
+PolypPVT[17] 78.08 25.61 67.43 82.34 66.14 81.21 73.78 94.37 59.34 88.05 79.4
+TransUNet[8] 77.61 26.9 67.32 86.56 60.43 80.54 78.53 94.33 58.47 87.06 75.00
+SwinUNet[5] 77.58 27.32 66.88 81.76 65.95 82.32 79.22 93.73 53.81 88.04 75.79
+MT-UNet[53] 78.59 26.59 − 87.92 64.99 81.47 77.29 93.06 59.46 87.75 76.81
+MISSFormer[25] 81.96 18.20 − 86.99 68.65 85.21 82.00 94.41 65.67 91.92 80.81
+PVT-CASCADE[42] 81.06 20.23 70.88 83.01 70.59 82.23 80.37 94.08 64.43 90.1 83.69
+TransCASCADE[42] 82.68 17.34 73.48 86.63 68.48 87.66 84.56 94.43 65.33 90.79 83.52
+PVT-EMCAD-B0(Ours) 81.97 17.39 72.64 87.21 66.62 87.48 83.96 94.57 62.00 92.66 81.22
+PVT-EMCAD-B2(Ours) 83.63 15.68 74.65 88.14 68.87 88.08 84.10 95.26 68.51 92.17 83.92
+Table2.ResultsofabdomenorgansegmentationonSynapseMulti-organdataset.DICEscoresarereportedforindividualorgans.Results
+ofUNet,AttnUNet,PolypPVT,SSFormerPVT,TransUNet,andSwinUNetaretakenfrom[42].↑(↓)denotesthehigher(lower)thebetter.
+‘−’meansmissingdatafromthesource.EMCADresultsareaveragedoverfiveruns.Bestresultsareshowninbold.
+4.1.Implementationdetails to352×352anduseamulti-scale{0.75,1.0,1.25}training
+strategy with a gradient clip limit of 0.5 for ClinicDB [3],
+We implement our network and conduct experiments us-
+Kvasir[29],ColonDB[51],ETIS[51],BKAI[40],ISIC17
+ing Pytorch 1.11.0 on a single NVIDIA RTX A6000 GPU [15],andISIC18[15],whileweresizeimagesto256×256
+with 48GB of memory. We utilize ImageNet [16] pre-
+for BUSI [1], EM [6], and DSB18 [4]. For Synapse and
+trained PVTv2-b0 and PVTv2-b2 [56] as encoders. In ACDC datasets, images are resized to 224 × 224, with
+the MSDC of our decoder, we set the multi-scale kernels
+random rotation and flipping augmentations, optimizing a
+[1,3,5] through an ablation study. We use the parallel ar-
+combinedCross-entropy(0.3)andDICE(0.7)loss. Forbi-
+rangement of depth-wise convolutions in all experiments.
+narysegmentation,weutilizethecombinedweightedBina-
+Our models are trained using the AdamW optimizer [36]
+ryCrossEntropy(BCE)andweightedIoUlossfunction.
+withalearningrateandweightdecayof1e−4. Wegener-
+ally train for 200 epochs with a batch size of 16, except 4.2.Results
+for Synapse multi-organ (300 epochs, batch size 6) and
+ACDC cardiac organ (400 epochs, batch size 12), saving We compare our architectures (i.e., PVT-EMCAD-B0 and
+thebestmodelbasedontheDICEscore. Weresizeimages PVT-EMCAD-B2)withSOTACNNandtransformer-based
+6\n\n===== PAGE 7 =====\n\nComponents #FLOPs(G) #Params Avg
+Cascaded LGAG MSCAM 224 256 (M) DICE
+No No No 0 0 0 80.10±0.2
+Yes No No 0.100 0.131 0.224 81.08±0.2
+Yes Yes No 0.108 0.141 0.235 81.92±0.2
+Yes No Yes 0.373 0.487 1.898 82.86±0.3
+Yes Yes Yes 0.381 0.498 1.91 83.63±0.3
+Table4. EffectofdifferentcomponentsofEMCADwithPVTv2-
+b2encoderonSynapsemulti-organdataset. #FLOPsarereported
+forinputresolutionof224×224and256×256. Allresultsare
+averagedoverfiveruns.Bestresultsareshowninbold.
+hibits the worst performance in all five polyp segmenta-
+tion datasets. Our smaller model with only 3.92M param-
+Figure3.AverageDICEscoresvs.#Paramsfordifferentmethods
+eters and 0.84G FLOPs also outperforms all the methods
+over10binarymedicalimagesegmentationdatasets. Asshown,
+except PVT-CASCADE (in Kvasir and BKAI-IGH) and
+our proposed approaches (PVT-EMCAD-B0 and PVT-EMCAD-
+SSFormer-L (in ColonDB), which achieve the best perfor-
+B2)havethefewestparameters,yetthehighestDICEscores.
+mance among SOTA methods. In conclusion, our PVT-
+Methods Avg.DICE RV Myo LV EMCAD-B2 achieves the new SOTA results in these five
+polypsegmentationdatasets.
+R50+UNet[8] 87.55 87.10 80.63 94.92
+R50+AttnUNet[8] 86.75 87.58 79.20 93.47 Skin lesion segmentation: Table 1 shows PVT-
+ViT+CUP[8] 81.45 81.46 70.71 92.18 EMCAD-B2’s strong performance on ISIC17 and ISIC18
+R50+ViT+CUP[8] 87.57 86.07 81.88 94.75 skin lesion segmentation datasets, achieving DICE scores
+TransUNet[8] 89.71 86.67 87.27 95.18 of85.95%and90.96%,surpassingDeepLabV3+by2.11%
+SwinUNet[5] 88.07 85.77 84.42 94.03
+and 2.32%. It also beats the nearest method PVT-
+MT-UNet[53] 90.43 86.64 89.04 95.62
+CASCADE by 0.45% and 0.55% in ISIC17 and ISIC18,
+MISSFormer[25] 90.86 89.55 88.04 94.99
+PVT-CASCADE[42] 91.46 89.97 88.9 95.50 respectively, though our decoder is significantly more ef-
+TransCASCADE[42] 91.63 90.25 89.14 95.50 ficientthanCASCADE.OurPVT-EMCAD-B0alsoshows
+CascadedMERIT[43] 91.85 90.23 89.53 95.80 hugepotentialinpointcareapplicationslikeskinlesionseg-
+PVT-EMCAD-B0(Ours) 91.34±0.2 89.37 88.99 95.65 mentationwithonly3.92Mparametersand0.84GFLOPs.
+PVT-EMCAD-B2(Ours) 92.12±0.2 90.65 89.68 96.02 Cellsegmentation: Toevaluateourmethod’seffective-
+ness in biological imaging, we use DSB18 [4] for cell nu-
+Table3. ResultsofcardiacorgansegmentationonACDCdataset.
+clei and EM [6] for cell structure segmentation. As Ta-
+DICE scores (%) are reported for individual organs. We get the
+ble 1 indicates, our PVT-EMCAD-B2 sets a SOTA bench-
+resultsofSwinUNetfrom[42].Bestresultsareshowninbold.
+markincellnucleisegmentationonDSB18,outperforming
+segmentation methods on 12 datasets that belong to six DeepLabv3+,TransFuse,andPVT-CASCADE.OntheEM
+medical image segmentation tasks. Qualitative results are dataset, PVT-EMCAD-B2 secures the second-best DICE
+intheSupplementarySection7.3. score(95.53%), offeringsignificantlylowercomputational
+coststhanthetop-performingAttnUNet(95.55%).
+4.2.1 Resultsofbinarymedicalimagesegmentation Breastcancersegmentation: Weconductexperiments
+ontheBUSIdatasetforbreastcancersegmentationinultra-
+Results for different methods on 10 binary medical im-
+sound images. Our PVT-EMCAD-B2 achieves the SOTA
+age segmentation datasets are shown in Table 1 and Fig-
+DICE score (80.25%) on this dataset. Furthermore, our
+ure 1. Our PVT-EMCAD-B2 attains the highest average
+PVT-EMCAD-B0outperformsthecomputationallysimilar
+DICE score (91.10%) with only 26.76M parameters and
+methodUNeXtbyanotablemarginof5.54%.
+5.6GFLOPs.Themulti-scaledepth-wiseconvolutioninour
+EMCADdecoder,combinedwiththetransformerencoder,
+4.2.2 Resultsofabdomenorgansegmentation
+contributestotheseperformancegains.
+Polyp segmentation: Table 1 reveals that our PVT- Table2showsthatourPVT-EMCAD-B2excelsinabdomen
+EMCAD-B2 surpasses all SOTA methods in five polyp organ segmentation on the Synapse multi-organ dataset,
+segmentation datasets. PVT-EMCAD-B2 achieves DICE achieving the highest average DICE score of 83.63% and
+score improvements of 1.08%, 0.78%, 2.36%, 1.19%, surpassing all SOTA CNN- and transformer-based meth-
+and 1.79% over PolypPVT in ClinicDB, ColonDB, ETIS, ods. It outperforms PVT-CASCADE by 2.57% in DICE
+Kvasir, and BKAI-IGI, despite having slightly more pa- scoreand4.55inHD95distance,indicatingsuperiororgan
+rameters and FLOPs. The smallest model UNeXt, ex- boundary location. Our EMCAD decoder boosts individ-
+7\n\n===== PAGE 8 =====\n\nConv.kernels [1] [3] [5] [1,3] [3,3] [1,3,5] [3,3,3] [3,5,7] [1,3,5,7] [1,3,5,7,9]
+Synapse 82.43 82.79 82.74 82.98 82.81 83.63 82.92 83.11 83.57 83.34
+ClinicDB 94.81 94.90 94.98 95.13 95.06 95.21 95.15 95.03 95.18 95.07
+Table5. Effectofmulti-scalekernelsinthedepth-wiseconvolutionofMSDConClinicDBandSynapsemulti-organdatasets. Weusethe
+PVTv2-b2encoderfortheseexperiments.Allresultsareaveragedoverfiveruns.Bestresultsarehighlightedinbold.
+Encoders Decoders #FLOPs(G) #Params(M) DICE(%) thatperformanceimprovesfrom1×1to3×3kernel.When
+PVTv2-B0 CASCADE 0.439 2.32 80.54 1×1 kernel is used together with 3×3 it improves more
+PVTv2-B0 EMCAD(Ours) 0.110 0.507 81.97 than when using them alone. However, when two 3 × 3
+PVTv2-B2 CASCADE 1.93 9.27 82.78 kernelsareusedtogether,performancedrops. Theincorpo-
+PVTv2-B2 EMCAD(Ours) 0.381 1.91 83.63 rationofa5×5kernelwith1×1and3×3kernelsfurther
+Table6.ComparisonwiththebaselinedecoderonSynapseMulti- improvestheperformanceanditachievesthebestresultsin
+organdataset. Weonlyreportthe#FLOPs(withinputresolution bothSynapsemulti-organandClinicDBdatasets. Ifweadd
+of224×224)andthe#parametersofthedecoders.Alltheresults additionallargerkernels(e.g.,7×7,9×9),theperformance
+areaveragedoverfiveruns.Bestresultsareshowninbold. of both datasets drops. Based on these empirical observa-
+ualorgansegmentation, significantlyoutperformingSOTA tions,wechoose[1,3,5]kernelsinallourexperiments.
+methodsonsixofeightorgans.
+5.3.Comparisonwiththebaselinedecoder
+4.2.3 Resultsofcardiacorgansegmentation
+InTable6,wereporttheexperimentalresultswiththecom-
+Table 3 shows the DICE scores of our PVT-EMCAD-B2 putationalcomplexityofourEMCADdecoderandabase-
+andPVT-EMCAD-B0alongwithotherSOTAmethods,on linedecoder,namelyCASCADE.FromTable6,wecansee
+theMRIimagesoftheACDCdatasetforcardiacorganseg- that our EMCAD decoder with PVTv2-b2 requires 80.3%
+mentation. OurPVT-EMCAD-B2achievesthehighestav- fewer FLOPs and 79.4% fewer parameters to outperform
+erageDICEscoreof92.12%,thusimprovingabout0.27% (by 0.85%) the respective CASCADE decoder. Similarly,
+overCascadedMERITthoughournetworkhassignificantly ourEMCADdecoderwithPVTv2-B0achieves1.43%bet-
+lower computational cost. Besides, PVT-EMCAD-B2 has ter DICE score than the CASCADE decoder with 78.1%
+betterDICEscoresinallthreeorgansegmentations. fewerparametersand74.9%fewerFLOPs.
+5.AblationStudies
+6.Conclusions
+Inthissection,weconductablationstudiestoexplorediffer-
+In this paper, we have presented EMCAD, a new and effi-
+entaspectsofourarchitecturesandtheexperimentalframe-
+cient multi-scale convolutional attention decoder designed
+work. MoreablationsareinSupplementarySection8.
+formulti-stagefeatureaggregationandrefinementinmed-
+5.1.EffectofdifferentcomponentsofEMCAD ical image segmentation. EMCAD employs a multi-scale
+depth-wiseconvolutionblock,whichiskeyforcapturingdi-
+WeconductasetofexperimentsontheSynapsemulti-organ
+versescaleinformationwithinfeaturemaps,acriticalfactor
+datasettounderstandtheeffectofdifferentcomponentsof
+for precision in medical image segmentation. This design
+our EMCAD decoder. We start with only the encoder and
+choice, using depth-wise convolutions instead of standard
+add different modules such as Cascaded structure, LGAG,
+3×3convolutionblocks,makesEMCADnotablyefficient.
+and MSCAM to understand their effect. Table 4 exhibits
+Our experiments reveal that EMCAD surpasses the re-
+thatthecascadedstructureofthedecoderhelpstoimprove
+centCASCADEdecoderinDICEscoreswith79.4%fewer
+performance over the non-cascaded one. The incorpora-
+parameters and 80.3% less FLOPs. Our extensive experi-
+tion of LGAG and MSCAM improves performance, how-
+ments also confirm EMCAD’s superior performance com-
+ever,MSCAMprovestobemoreeffective. Whenboththe
+paredtoSOTAmethodsacross12publicdatasetscovering
+LGAGandMSCAMmodulesareusedtogether,itproduces
+six different 2D medical image segmentation tasks. EM-
+thebestDICEscoreof83.63%. Itisalsoevidentthatthere
+CAD’scompatibilitywithsmallerencodersmakesitanex-
+isabout3.53%improvementintheDICEscorewithanad-
+cellent fit for point-of-care applications while maintaining
+ditional0.381GFLOPsand1.91Mparameters.
+highperformance. WeanticipatethatourEMCADdecoder
+5.2.Effectofmulti-scalekernelsinMSCAM
+will be a valuable asset in enhancing a variety of medical
+imagesegmentationandsemanticsegmentationtasks.
+WehaveconductedanothersetofexperimentsonSynapse
+Acknowledgements: This work is supported in part
+multi-organandClinicDBdatasetstounderstandtheeffect
+by the NSF grant CNS 2007284, and in part by the
+ofdifferentmulti-scalekernelsusedfordepth-wiseconvo-
+iMAGiNE Consortium (https://imagine.utexas.edu/).
+lutionsinMSDC.Table5reportstheseresultswhichshow
+8\n\n===== PAGE 9 =====\n\nReferences sitional encodings for vision transformers. arXiv preprint
+arXiv:2102.10882,2021. 1
+[1] Walid Al-Dhabyani, Mohammed Gomaa, Hussien Khaled,
+[14] Noel Codella, Veronica Rotemberg, Philipp Tschandl,
+andAlyFahmy. Datasetofbreastultrasoundimages. Data
+M Emre Celebi, Stephen Dusza, David Gutman, Brian
+inbrief,28:104863,2020. 6,1
+Helba, Aadi Kalloo, Konstantinos Liopyris, Michael
+[2] Vijay Badrinarayanan, Alex Kendall, and Roberto Cipolla.
+Marchetti, et al. Skin lesion analysis toward melanoma
+Segnet: Adeepconvolutionalencoder-decoderarchitecture
+detection 2018: A challenge hosted by the interna-
+for image segmentation. IEEE Trans. Pattern Anal. Mach.
+tional skin imaging collaboration (isic). arXiv preprint
+Intell.,39(12):2481–2495,2017. 3
+arXiv:1902.03368,2019. 1
+[3] Jorge Bernal, F Javier Sa´nchez, Gloria Ferna´ndez-
+[15] Noel CF Codella, David Gutman, M Emre Celebi, Brian
+Esparrach, Debora Gil, Cristina Rodr´ıguez, and Fernando
+Helba, Michael A Marchetti, Stephen W Dusza, Aadi
+Vilarin˜o. Wm-dovamapsforaccuratepolyphighlightingin
+Kalloo, Konstantinos Liopyris, Nabin Mishra, Harald Kit-
+colonoscopy: Validationvs.saliencymapsfromphysicians.
+tler,etal. Skinlesionanalysistowardmelanomadetection:
+Comput.Med.ImagingGraph.,43:99–111,2015. 6,1
+Achallengeatthe2017internationalsymposiumonbiomed-
+[4] JuanCCaicedo,AllenGoodman,KyleWKarhohs,BethA icalimaging(isbi),hostedbytheinternationalskinimaging
+Cimini, Jeanelle Ackerman, Marzieh Haghighi, CherKeng collaboration (isic). In IEEE Int. Symp. Biomed. Imaging,
+Heng, TimBecker, MinhDoan, ClaireMcQuin, etal. Nu- pages168–172.IEEE,2018. 6,1
+cleus segmentation across imaging experiments: the 2018 [16] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+data science bowl. Nature methods, 16(12):1247–1253, andLiFei-Fei. Imagenet: Alarge-scalehierarchicalimage
+2019. 6,7,1 database. InIEEEConf.Comput.Vis.PatternRecog.,pages
+[5] Hu Cao, Yueyue Wang, Joy Chen, Dongsheng Jiang, Xi- 248–255.Ieee,2009. 6
+aopeng Zhang, Qi Tian, and Manning Wang. Swin-unet: [17] Bo Dong, Wenhai Wang, Deng-Ping Fan, Jinpeng Li,
+Unet-likepuretransformerformedicalimagesegmentation. Huazhu Fu, and Ling Shao. Polyp-pvt: Polyp segmen-
+arXivpreprintarXiv:2105.05537,2021. 1,3,6,7 tation with pyramid vision transformers. arXiv preprint
+[6] AlbertCardona, StephanSaalfeld, StephanPreibisch, Ben- arXiv:2108.06932,2021. 1,3,5,6
+jaminSchmid,AnchiCheng,JimPulokas,PavelTomancak, [18] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+andVolkerHartenstein. Anintegratedmicro-andmacroar- Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+chitectural analysis of the drosophila brain by computer- MostafaDehghani,MatthiasMinderer,GeorgHeigold,Syl-
+assisted serial section electron microscopy. PLoS biology, vain Gelly, et al. An image is worth 16x16 words: Trans-
+8(10):e1000502,2010. 6,7,1 formers for image recognition at scale. arXiv preprint
+[7] Gongping Chen, Lei Li, Yu Dai, Jianxun Zhang, and arXiv:2010.11929,2020. 1,2
+Moi Hoon Yap. Aau-net: an adaptive attention u-net for [19] Isensee et al. nnu-net: a self-configuring method for deep
+breast lesions segmentation in ultrasound images. IEEE learning-based biomedical image segmentation. Nature
+Trans.Med.Imaging,2022. 2 methods,18(2):203–211,2021. 1,2,3
+[8] JienengChen,YongyiLu,QihangYu,XiangdeLuo,Ehsan [20] Deng-PingFan,Ge-PengJi,TaoZhou,GengChen,Huazhu
+Adeli, Yan Wang, Le Lu, Alan L Yuille, and Yuyin Zhou. Fu, Jianbing Shen, and Ling Shao. Pranet: Parallel re-
+Transunet: Transformers make strong encoders for medi- verseattentionnetworkforpolypsegmentation.InInt.Conf.
+calimagesegmentation. arXivpreprintarXiv:2102.04306, Med.ImageComput.Comput.Assist.Interv.,pages263–273.
+2021. 1,2,3,6,7 Springer,2020. 1,3,6
+[9] Long Chen, Hanwang Zhang, Jun Xiao, Liqiang Nie, Jian [21] KaimingHe,XiangyuZhang,ShaoqingRen,andJianSun.
+Shao, Wei Liu, and Tat-Seng Chua. Sca-cnn: Spatial and Deepresiduallearningforimagerecognition.InIEEEConf.
+channel-wiseattentioninconvolutionalnetworksforimage Comput.Vis.PatternRecog.,pages770–778,2016. 2
+captioning. In IEEE Conf. Comput. Vis. Pattern Recog., [22] Andrew G Howard, Menglong Zhu, Bo Chen, Dmitry
+pages5659–5667,2017. 3,4 Kalenichenko, Weijun Wang, Tobias Weyand, Marco An-
+[10] Liang-Chieh Chen, George Papandreou, Iasonas Kokkinos, dreetto,andHartwigAdam. Mobilenets: Efficientconvolu-
+KevinMurphy,andAlanLYuille.Deeplab:Semanticimage tionalneuralnetworksformobilevisionapplications. arXiv
+segmentationwithdeepconvolutionalnets,atrousconvolu- preprintarXiv:1704.04861,2017. 2
+tion, and fully connected crfs. IEEE Trans. Pattern Anal. [23] JieHu,LiShen,andGangSun. Squeeze-and-excitationnet-
+Mach.Intell.,40(4):834–848,2017. 2,6 works. In IEEE Conf. Comput. Vis. Pattern Recog., pages
+[11] Liang-ChiehChen,YukunZhu,GeorgePapandreou,Florian 7132–7141,2018. 2,3
+Schroff, and Hartwig Adam. Encoder-decoder with atrous [24] Huimin Huang, Lanfen Lin, Ruofeng Tong, Hongjie Hu,
+separableconvolutionforsemanticimagesegmentation. In Qiaowei Zhang, Yutaro Iwamoto, Xianhua Han, Yen-Wei
+Eur.Conf.Comput.Vis.,pages801–818,2018. 2 Chen, and Jian Wu. Unet 3+: A full-scale connected unet
+[12] ShuhanChen,XiuliTan,BenWang,andXuelongHu. Re- for medical image segmentation. In ICASSP, pages 1055–
+verse attention for salient object detection. In Eur. Conf. 1059.IEEE,2020. 1,2
+Comput.Vis.,pages234–250,2018. 1 [25] XiaohongHuang,ZhifangDeng,DandanLi,andXueguang
+[13] Xiangxiang Chu, Zhi Tian, Bo Zhang, Xinlong Wang, Xi- Yuan.Missformer:Aneffectivemedicalimagesegmentation
+aolinWei,HuaxiaXia,andChunhuaShen. Conditionalpo- transformer. arXivpreprintarXiv:2109.07162,2021. 6,7
+9\n\n===== PAGE 10 =====\n\n[26] Nabil Ibtehaz and Daisuke Kihara. Acc-unet: A com- [41] Ozan Oktay, Jo Schlemper, Loic Le Folgoc, Matthew Lee,
+pletelyconvolutionalunetmodelforthe2020s. InInt.Conf. MattiasHeinrich,KazunariMisawa,KensakuMori,Steven
+Med.ImageComput.Comput.Assist.Interv.,pages692–702. McDonagh,NilsYHammerla,BernhardKainz,etal.Atten-
+Springer,2023. 2 tionu-net: Learningwheretolookforthepancreas. arXiv
+[27] Sergey Ioffe and Christian Szegedy. Batch normalization: preprintarXiv:1804.03999,2018. 1,2,3,6
+Acceleratingdeepnetworktrainingbyreducinginternalco- [42] Md Mostafijur Rahman and Radu Marculescu. Medical
+variate shift. In Int. Conf. Mach. Learn., pages 448–456. image segmentation via cascaded attention decoding. In
+pmlr,2015. 3 IEEE/CVF Winter Conf. Appl. Comput. Vis., pages 6222–
+[28] MdAmirulIslam,SenJia,andNeilDBBruce. Howmuch 6231,2023. 1,3,4,5,6,7
+position information do convolutional neural networks en- [43] MdMostafijurRahmanandRaduMarculescu. Multi-scale
+code? arXivpreprintarXiv:2001.08248,2020. 1 hierarchical vision transformer with cascaded attention de-
+[29] Debesh Jha, Pia H Smedsrud, Michael A Riegler, Pa˚l coding for medical image segmentation. In Med. Imaging
+Halvorsen,ThomasdeLange,DagJohansen,andHa˚vardD DeepLearn.,2023. 1,3,5,7
+Johansen. Kvasir-seg: A segmented polyp dataset. In Int. [44] OlafRonneberger,PhilippFischer,andThomasBrox.U-net:
+Conf. Multimedia Model., pages 451–462. Springer, 2020. Convolutionalnetworksforbiomedicalimagesegmentation.
+6,1 In Int. Conf. Med. Image Comput. Comput. Assist. Interv.,
+[30] TaehunKim,HyeminLee,andDaijinKim.Uacanet:Uncer- pages234–241.Springer,2015. 1,2,6
+tainty augmented context attention for polyp segmentation. [45] MarkSandler,AndrewHoward,MenglongZhu,AndreyZh-
+InACMInt.Conf.Multimedia,pages2167–2175,2021. 6 moginov, and Liang-Chieh Chen. Mobilenetv2: Inverted
+[31] AlexKrizhevskyandGeoffHinton. Convolutionaldeepbe- residualsandlinearbottlenecks.InIEEEConf.Comput.Vis.
+lief networks on cifar-10. Unpublished manuscript, 40(7): PatternRecog.,pages4510–4520,2018. 2,4
+1–9,2010. 4 [46] KarenSimonyanandAndrewZisserman. Verydeepconvo-
+[32] Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. lutional networks for large-scale image recognition. arXiv
+Imagenet classification with deep convolutional neural net- preprintarXiv:1409.1556,2014. 2
+works. Adv.NeuralInform.Process.Syst.,25,2012. 2 [47] ChristianSzegedy,WeiLiu,YangqingJia,PierreSermanet,
+[33] Xian Lin, Zengqiang Yan, Xianbo Deng, Chuansheng Scott Reed, Dragomir Anguelov, Dumitru Erhan, Vincent
+Zheng, and Li Yu. Convformer: Plug-and-play cnn-style Vanhoucke, and Andrew Rabinovich. Going deeper with
+transformersforimprovingmedicalimagesegmentation. In convolutions. In IEEE Conf. Comput. Vis. Pattern Recog.,
+Int.Conf.Med.ImageComput.Comput.Assist.Interv.,pages pages1–9,2015. 2
+642–651.Springer,2023. 1 [48] MingxingTanandQuocLe. Efficientnet:Rethinkingmodel
+[34] ZeLiu,YutongLin,YueCao,HanHu,YixuanWei,Zheng scaling for convolutional neural networks. In Int. Conf.
+Zhang, Stephen Lin, and Baining Guo. Swin transformer: Mach.Learn.,pages6105–6114.PMLR,2019. 2
+Hierarchical vision transformer using shifted windows. In [49] Zhengzhong Tu, Hossein Talebi, Han Zhang, Feng Yang,
+Int.Conf.Comput.Vis.,pages10012–10022,2021. 1,2,3 Peyman Milanfar, Alan Bovik, and Yinxiao Li. Maxvit:
+[35] ZhuangLiu,HanziMao,Chao-YuanWu,ChristophFeicht- Multi-axis vision transformer. In Eur. Conf. Comput. Vis.,
+enhofer,TrevorDarrell,andSainingXie. Aconvnetforthe pages459–479.Springer,2022. 1,2
+2020s. In IEEE Conf. Comput. Vis. Pattern Recog., pages [50] JeyaMariaJoseValanarasuandVishalMPatel.Unext:Mlp-
+11976–11986,2022. 2 based rapid medical image segmentation network. In Int.
+[36] IlyaLoshchilovandFrankHutter. Decoupledweightdecay Conf. Med. Image Comput. Comput. Assist. Interv., pages
+regularization. arXivpreprintarXiv:1711.05101,2017. 6 23–33.Springer,2022. 6,1
+[37] Ange Lou, Shuyue Guan, and Murray Loew. Dc-unet: re- [51] David Va´zquez, Jorge Bernal, F Javier Sa´nchez, Gloria
+thinking the u-net architecture with dual channel efficient Ferna´ndez-Esparrach, Antonio M Lo´pez, Adriana Romero,
+cnnformedicalimagesegmentation.InMed.Imaging2021: Michal Drozdzal, and Aaron Courville. A benchmark for
+ImageProcess.,pages758–768.SPIE,2021. 1,2 endoluminalscenesegmentationofcolonoscopyimages. J.
+[38] AngeLou,ShuyueGuan,HanseokKo,andMurrayHLoew. Healthc.Eng.,2017,2017. 6,1
+Caranet:contextaxialreverseattentionnetworkforsegmen- [52] HaonanWang,PengCao,JiaqiWang,andOsmarRZaiane.
+tationofsmallmedicalobjects. InMed.Imaging2022: Im- Uctransnet: rethinkingtheskipconnectionsinu-netfroma
+ageProcess.,pages81–92.SPIE,2022. 6 channel-wiseperspectivewithtransformer. InAAAI,pages
+[39] Vinod Nair and Geoffrey E Hinton. Rectified linear units 2441–2449,2022. 1,3
+improverestrictedboltzmannmachines. InInt.Conf.Mach. [53] Hongyi Wang, Shiao Xie, Lanfen Lin, Yutaro Iwamoto,
+Learn.,pages807–814,2010. 3 Xian-HuaHan, Yen-WeiChen, andRuofengTong. Mixed
+[40] Phan Ngoc Lan, Nguyen Sy An, Dao Viet Hang, Dao Van transformer u-net for medical image segmentation. In
+Long,TranQuangTrung,NguyenThiThuy,andDinhViet ICASSP,pages2390–2394.IEEE,2022. 6,7
+Sang. Neounet:Towardsaccuratecolonpolypsegmentation [54] JinfengWang,QimingHuang,FeilongTang,JiaMeng,Jion-
+andneoplasmdetection. InAdv.Vis.Comput.–Int.Symp., glong Su, and Sifan Song. Stepwise feature fusion: Local
+pages15–28.Springer,2021. 6,1 guidesglobal. arXivpreprintarXiv:2203.03635,2022. 1,6
+10\n\n===== PAGE 11 =====\n\n[55] WenhaiWang,EnzeXie,XiangLi,Deng-PingFan,Kaitao
+Song,DingLiang,TongLu,PingLuo,andLingShao.Pyra-
+midvisiontransformer: Aversatilebackbonefordensepre-
+diction without convolutions. In Int. Conf. Comput. Vis.,
+pages568–578,2021. 1,2
+[56] WenhaiWang,EnzeXie,XiangLi,Deng-PingFan,Kaitao
+Song,DingLiang,TongLu,PingLuo,andLingShao. Pvt
+v2: Improved baselines with pyramid vision transformer.
+Comput.Vis.Media,8(3):415–424,2022. 1,2,3,5,6
+[57] SanghyunWoo,JongchanPark,Joon-YoungLee,andInSo
+Kweon. Cbam: Convolutional block attention module. In
+Eur.Conf.Comput.Vis.,pages3–19,2018. 1,3,4
+[58] EnzeXie,WenhaiWang,ZhidingYu,AnimaAnandkumar,
+JoseMAlvarez,andPingLuo. Segformer: Simpleandef-
+ficientdesignforsemanticsegmentationwithtransformers.
+Adv.NeuralInform.Process.Syst.,34:12077–12090,2021.
+2,3
+[59] WeihaoYu,MiLuo,PanZhou,ChenyangSi,YichenZhou,
+XinchaoWang,JiashiFeng,andShuichengYan.Metaformer
+isactuallywhatyouneedforvision. InIEEEConf.Comput.
+Vis.PatternRecog.,pages10819–10829,2022. 1
+[60] XiangyuZhang,XinyuZhou,MengxiaoLin,andJianSun.
+Shufflenet: Anextremelyefficientconvolutionalneuralnet-
+workformobiledevices.InIEEEConf.Comput.Vis.Pattern
+Recog.,pages6848–6856,2018. 4
+[61] YundongZhang,HuiyeLiu,andQiangHu. Transfuse:Fus-
+ingtransformersandcnnsformedicalimagesegmentation.
+In Int. Conf. Med. Image Comput. Comput. Assist. Interv.,
+pages14–24.Springer,2021. 1,3,6
+[62] Zongwei Zhou, Md Mahfuzur Rahman Siddiquee, Nima
+Tajbakhsh,andJianmingLiang. Unet++: Anestedu-netar-
+chitectureformedicalimagesegmentation. InDeepLearn.
+Med.ImageAnal.MultimodalLearn.Clin.Decis.Support,
+pages3–11.Springer,2018. 1,2,6
+11\n\n===== PAGE 12 =====\n\nEMCAD: Efficient Multi-scale Convolutional Attention Decoding for Medical
+Image Segmentation
+Supplementary Material
+7.ExperimentalDetails 7.2.Evaluationmetrics
+ThissectionextendsourSection4intheoriginalpaperby We use the DICE score to evaluate performance on all
+describingthedatasetsandevaluationmetrics,followedby the datasets. However, we also use 95% Hausdorff Dis-
+additionalexperimentalresults. tance (HD95) and mIoU as additional evaluation metrics
+for Synapse multi-organ segmentation. The DICE score
+7.1.Datasets DSC(Y,P),IoU(Y,P),andHD95distanceD (Y,P)are
+H
+calculatedusingEquations12,13,and14,respectively:
+To evaluate the performance of our EMCAD decoder, we
+carryoutexperimentsacross12datasetsthatbelongtosix 2×|Y ∩P|
+DSC(Y,P)= ×100 (12)
+medicalimagesegmentationtasks,asdescribednext. |Y|+|P|
+Polyp segmentation: We use five polyp segmentation
+|Y ∩P|
+datasets:Kvasir[29](1,000images),ClinicDB[3](612im- IoU(Y,P)= ×100 (13)
+|Y ∪P|
+ages),ColonDB[51](379images),ETIS[51](196images),
+andBKAI[40](1,000images). Thesedatasetscontainim-
+ages from different imaging centers/clinics, having greater D H (Y,P)=max{maxmind(y,p),{maxmind(y,p)} (14)
+y∈Y p∈P p∈P y∈Y
+diversityinimagenatureaswellassizeandshapeofpolyps.
+whereY andP arethegroundtruthandpredictedsegmen-
+Abdomen organ segmentation: We use the Synapse
+tationmap,respectively.
+multi-organdataset1forabdomenorgansegmentation.This
+datasetcontains30abdominalCTscanswhichhave3,779
+7.3.Qualitativeresults
+axial contrast-enhanced slices. Each CT scan has 85-198
+slices of 512×512 pixels. Following TransUNet [8], we
+This subsection describes the qualitative results of differ-
+use the same 18 scans for training (2,212 axial slices) and
+ent methods including our EMCAD. From, the qualitative
+12scansforvalidation. Wesegmentonlyeightabdominal
+resultsonSynapseMulti-organdatasetinFigure4,wecan
+organs, namely aorta, gallbladder (GB), left kidney (KL),
+seethatmostofthemethodsfacechallengessegmentingthe
+right kidney (KR), liver, pancreas (PC), spleen (SP), and
+leftkidney(orange)andpartofthepancreas(pink). How-
+stomach(SM).
+ever,ourPVT-EMCAD-B0(Figure4g)andPVT-EMCAD-
+Cardiac organ segmentation: We use ACDC dataset2
+B2 (Figure 4h) can segment those organs more accurately
+for cardiac organ segmentation. It contains 100 cardiac
+(seeredrectangularbox)withsignificantlylowercomputa-
+MRIscanshavingthreesub-organs,namelyrightventricle
+tionalcosts. Similarly,qualitativeresultsofpolypsegmen-
+(RV),myocardium(Myo), andleftventricle(LV).Follow-
+tation on a representative image from ClinicDB dataset in
+ingTransUNet[8],weuse70cases(1,930axialslices)for
+Figure 5 show that predicted segmentation outputs of our
+training,10forvalidation,and20fortesting.
+PVT-EMCAD-B0 (Figure 5p) and PVT-EMCAD-B2 (Fig-
+Skin lesion segmentation: We use ISIC17 [15] (2,000 ure 5q) have strong overlaps with the GroundTruth mask
+training, 150 validation, and 600 testing images) and (Figure5r),whileexistingSOTAmethodsexhibitfalseseg-
+ISIC18[14](2,594images)forskinlesionsegmentation. mentationofpolyp(seeredrectangularbox).
+Breastcancersegmentation: WeuseBUSI[1]datasetfor
+breast cancer segmentation. Following [50], we use 647
+(437benignand210malignant)imagesfromthisdataset. 8.AdditionalAblationStudy
+Cell nuclei/structure segmentation: We use the DSB18
+ThissectionfurtherelaboratesonSection5bydetailingfive
+[4] (670 images) and EM [6] (30 images) datasets of bio-
+additional ablation studies related to our architectural de-
+logicalimagingforcellnuclei/structuresegmentation.
+signandexperimentalsetup.
+We use a train-val-test split of 80:10:10 in ClinicDB,
+Kvasir, ColonDB, ETIS, BKAI, ISIC18, DSB18, EM, and 8.1.Parallelvs. sequentialdepth-wiseconvolution
+BUSIdatasets. ForISIC17,weusetheofficialtrain-val-test
+We have conducted another set of experiments to decide
+setsprovidedbythecompetitionorganizer.
+whetherweusemulti-scaledepth-wiseconvolutionsinpar-
+1https://www.synapse.org/#!Synapse:syn3193805/wiki/217789 allelorsequential. Table7presentstheresultsoftheseex-
+2https://www.creatis.insa-lyon.fr/Challenge/acdc/ perimentswhichshowthatthereisnosignificantimpactof
+1\n\n===== PAGE 13 =====\n\nFigure4. Qualitativeresultsofmulti-organsegmentationonSynapseMulti-organdataset. Theredrectangularboxhighlightsincorrectly
+segmentedorgansbySOTAmethods.
+Figure5.Qualitativeresultsofpolypsegmentation.TheredrectangularboxhighlightsincorrectlysegmentedpolypsbySOTAmethods.
+Architectures Depth-wiseconvolutions Synapse ClinicDB Architectures Module Params(K) FLOPs(M) Synapse
+PVT-EMCAD-B0 Sequential 81.82±0.3 94.57±0.2 PVT-EMCAD-B0 AG 31.62 15.91 81.74
+PVT-EMCAD-B0 Parallel 81.97±0.2 94.60±0.2 PVT-EMCAD-B0 LGAG 5.51 5.24 81.97
+PVT-EMCAD-B2 Sequential 83.54±0.3 95.15±0.3 PVT-EMCAD-B2 AG 124.68 61.68 83.51
+PVT-EMCAD-B2 Parallel 83.63±0.2 95.21±0.2
+PVT-EMCAD-B2 LGAG 11.01 10.47 83.63
+Table7.Resultsofparallelandsequentialdepth-wiseconvolution Table8. LGAGvs. AG(Attentiongate)[41]onSynapsemulti-
+inMSDConSynapsemulti-organandClinicDBdatasets. Allre- organdataset.Thetotal#Paramsand#FLOPsofthreeAG/LGAGs
+sultsareaveragedoverfiveruns.Bestresultsareinbold. inourdecoderarereportedforaninputresolutionof256×256.
+Allresultsareaveragedoverfiveruns.Bestresultsareinbold.
+8.2. Effectiveness of our large-kernel grouped at-
+thearrangementsthoughtheparallelconvolutionsprovidea
+tentiongate(LGAG)overattentiongate(AG)
+slightlyimprovedperformance(0.03%to0.15%). Wealso
+observe higher standard deviations among runs in the case Table8presentsexperimentalresultsofEMCADwithorig-
+of sequential convolutions. Hence, in all our experiments, inal AG [41] and our LGAG. We can conclude that our
+weusemulti-scaledepth-wiseconvolutionsinparallel. LGAG achieves better DICE scores with significant re-
+2\n\n===== PAGE 14 =====\n\nAverage
+Architectures Pretrain Aorta GB KL KR Liver PC SP SM
+DICE↑ HD95↓ mIoU↑
+PVT-EMCAD-B0 No 77.47 19.93 66.72 81.96 69.41 83.88 74.82 93.45 54.41 88.97 72.85
+PVT-EMCAD-B0 Yes 81.97 17.39 72.64 87.21 66.62 87.48 83.96 94.57 62.00 92.66 81.22
+PVT-EMCAD-B2 No 80.18 18.83 70.21 85.98 68.10 84.62 79.93 93.96 61.61 90.99 76.23
+PVT-EMCAD-B2 Yes 83.63 15.68 74.65 88.14 68.87 88.08 84.10 95.26 68.51 92.17 83.92
+Table9. EffectoftransferlearningfromImageNetpre-trainedweightsonSynapsemulti-organdataset. ↑(↓)denotesthehigher(lower)
+thebetter.Allresultsareaveragedoverfiveruns.Bestresultsareinbold.
+DS EM BUSI Clinic Kvasir ISIC18 Synapse ACDC the smaller PVT-EMCAD-B0 model than the larger PVT-
+No 95.74 79.64 94.96 92.51 90.74 82.03 92.08
+EMCAD-B2 model. For individual organs, transfer learn-
+Yes 95.53 80.25 95.21 92.75 90.96 83.63 92.12
+ing significantly boosts the performance of all organ seg-
+Table10.Effectofdeepsupervision(DS).PVT-EMCAD-B2with mentation,excepttheGallbladder(GB).
+DSachievesslightlybetterDICEscoresin6outof7datasets.
+8.4.Effectofdeepsupervision
+Architectures Resolutions FLOPs(G) DICE We have conducted an ablation study that drops the Deep
+Supervision (DS). Results of our PVT-EMCAD-B2 on
+PVT-EMCAD-B0 224×224 0.64 81.97
+seven datasets are given in Table 10. Our PVT-EMCAD-
+PVT-EMCAD-B0 256×256 0.84 82.63
+B2withDSachievesslightlybetterDICEscoresinsixout
+PVT-EMCAD-B0 384×384 1.89 84.81
+of seven datasets. Among all the datasets, the DS has the
+PVT-EMCAD-B0 512×512 3.36 85.52 largestimpactontheSynapseMulti-organdataset.
+PVT-EMCAD-B2 224×224 4.29 83.63
+8.5.Effectofinputresolutions
+PVT-EMCAD-B2 256×256 5.60 84.47
+PVT-EMCAD-B2 384×384 12.59 85.78 Table 11 presents the results of our PVT-EMCAD-B0 and
+PVT-EMCAD-B2 512×512 22.39 86.53 PVT-EMCAD-B2architectureswithdifferentinputresolu-
+tions. Fromthistable,itisevidentthattheDICEscoresim-
+Table 11. Effect of input resolutions on Synapse multi-organ
+provewiththeincreaseininputresolution. However,these
+dataset.Allresultsareaveragedoverfiveruns.
+improvements in DICE score come with the increment in
+#FLOPs. OurPVT-EMCAD-B0achievesan85.52%DICE
+ductions in #Params (82.57% for PVT-EMCAD-B0 and score with only 3.36G FLOPs when using 512 × 512 in-
+91.17% for PVT-EMCAD-B2) and #FLOPs (67.06% for puts. On the other hand, our PVT-EMCAD-B2 achieves
+PVT-EMCAD-B0and83.03%forPVT-EMCAD-B2)than the best DICE score (86.53%) with 22.39G FLOPs when
+AG. The reduction in #Params and #FLOPs is bigger for using 512 × 512 inputs. We also observe that our PVT-
+thelargermodels. Therefore,ourLGAGdemonstratesim- EMCAD-B2with5.60GFLOPswhenusing256×256in-
+proved scalability with models that have a greater number putsshowsa1.05%lowerDICEscorethanPVT-EMCAD-
+ofchannels,yieldingenhancedDICEscores. B0 with 3.36G FLOPs. Therefore, we can conclude that
+PVT-EMCAD-B0 is more suitable for larger input resolu-
+8.3.EffectoftransferlearningfromImageNetpre-
+tionsthanPVT-EMCAD-B2.
+trainedweights
+WeconductexperimentsontheSynapsemulti-organdataset
+to show the effect of transfer learning from the ImageNet
+pre-trainedencoder. Table9reportstheresultsoftheseex-
+perimentswhichshowthattransferlearningfromImageNet
+pre-trained PVT-v2 encoders significantly boosts the per-
+formance. Specifically, for PVT-EMCAD-B0, the DICE,
+mIoU, and HD95 scores are improved by 4.5%, 5.92%,
+and2.54,respectively. Likewise,forPVT-EMCAD-B2,the
+DICE, mIoU, and HD95 scores are improved by 3.45%,
+4.44%, and 3.15, respectively. We can also conclude that
+transfer learning has a comparatively greater impact on
+3

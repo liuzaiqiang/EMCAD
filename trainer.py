@@ -36,6 +36,7 @@ import torch.nn as nn
 import torch.optim as optim
 # SummaryWriter 将标量写成 TensorBoard 可读取的事件文件。
 from tensorboardX import SummaryWriter
+from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
 # CrossEntropyLoss 对每个像素执行 9 类分类，输入 logits、目标为整数类别编号。
 from torch.nn.modules.loss import CrossEntropyLoss
 # DataLoader 负责批处理、打乱、并行读取与 pin memory。
@@ -123,6 +124,10 @@ def trainer_synapse(args, model, snapshot_path):
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     # 把全部命令行配置写入日志，这是复现实验时最基本的配置快照。
     logging.info(str(args))
+    # 训练峰值显存统计只读取完整训练 step 后的 CUDA 峰值，不改变 Synapse 训练过程。
+    train_memory_logged = False
+    reset_peak_memory(torch.device("cuda"))
+    train_environment = log_environment(logging, torch.device("cuda"), prefix="BENCHMARK_TRAIN_ENV")
     # Synapse 的模型已由 train_synapse.py 构建；这里是统一训练日志入口。
     with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
         json.dump(vars(args), stream, ensure_ascii=False, indent=2)
@@ -306,6 +311,18 @@ def trainer_synapse(args, model, snapshot_path):
             loss.backward()
             # AdamW 根据当前梯度、学习率和权重衰减更新一次全部可训练参数。
             optimizer.step()
+            if not train_memory_logged:
+                synchronize(torch.device("cuda"))
+                log_json(logging, "BENCHMARK_TRAIN_PEAK_GPU_MEMORY", {
+                    "measurement_policy": "peak after first complete forward/backward/optimizer step",
+                    "batch_size": args.batch_size,
+                    "input_size": args.img_size,
+                    "amp": False,
+                    "optimizer": "AdamW",
+                    "environment": train_environment,
+                    **peak_memory_mb(torch.device("cuda")),
+                })
+                train_memory_logged = True
             # 因此 mutation 不是“多打印几个损失”，而是确实改变了梯度。四个输出头以及它们之前共享的 decoder、encoder 都会受到这些监督路径影响。
 
             """
@@ -364,8 +381,8 @@ def trainer_synapse(args, model, snapshot_path):
         # inference 后没有在下一 epoch 开头再次切回 train；因此第 2 个 epoch 起模型保持 eval 模式。
         # 这会影响 BatchNorm/Dropout，但依照用户约束这里只解释，不修改该逻辑。——已经修改
 
-        # 每 50 个 epoch 另存一个阶段性 checkpoint。
-        save_interval = 50
+        # 每 100 个 epoch 另存一个阶段性 checkpoint。
+        save_interval = 100
 
         # 当前指标大于或等于历史最好值时更新；相等也会覆盖已有 best.pth。
         if (best_performance <= performance):
@@ -379,6 +396,7 @@ def trainer_synapse(args, model, snapshot_path):
             logging.info("save model to {}".format(save_mode_path))
 
         # epoch_num 从 0 开始，但判断用 epoch_num+1，所以第 50、100、150...轮触发。
+        """
         if (epoch_num + 1) % save_interval == 0:
             # 文件名使用一基轮次，因此第 50 轮保存为 epoch_50.pth。
             save_mode_path = os.path.join(
@@ -387,12 +405,11 @@ def trainer_synapse(args, model, snapshot_path):
             torch.save(model.state_dict(), save_mode_path)
             # 记录阶段性文件位置。
             logging.info("save model to {}".format(save_mode_path))
-
+        """
         # 最后一个 epoch 时再次确保保存最终权重；默认 300 轮对应 epoch_num=299。
         if epoch_num >= max_epoch - 1:
             # 最终文件名同样采用一基编号，例如 epoch_300.pth。
-            save_mode_path = os.path.join(
-                snapshot_path, 'epoch_' + str(epoch_num + 1) + '.pth')
+            save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num + 1) + '.pth')
             # 保存最终状态；若刚好也命中 save_interval，可能对同一文件写两次。
             torch.save(model.state_dict(), save_mode_path)
             # 写入最终保存日志。

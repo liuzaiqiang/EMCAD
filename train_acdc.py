@@ -73,6 +73,7 @@ from utils.acdc_utils import (
 from utils.dataset_ACDC import ACDCVolumeDataset, ACDCdataset, RandomGenerator
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
+from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
 
 
 # 集中定义全部训练参数；函数返回 Namespace，不在 import 阶段直接解析命令行。
@@ -147,7 +148,7 @@ def parse_args():
     # 每隔多少 epoch 运行一次完整验证。
     parser.add_argument("--validate_every", type=int, default=1)
     # 每隔多少 epoch 保存 epoch_N.pth。
-    parser.add_argument("--save_every", type=int, default=50)
+    parser.add_argument("--save_every", type=int, default=200)
     # 完整体推理时一次送入 GPU 的切片数，不等同于训练 batch_size。
     parser.add_argument("--inference_batch_size", type=int, default=8)
     # 大于 0 时每 epoch 只训练前 N 个 batch，主要用于 smoke test；0 表示不限制。
@@ -330,6 +331,10 @@ def main():
     logging.info("args=%s", args)
     # 保存实际运行设备。
     logging.info("device=%s", device)
+    # 训练峰值显存只在首次完整更新后读取，避免把模型初始化阶段混入统计。
+    train_memory_logged = False
+    reset_peak_memory(device)
+    train_environment = log_environment(logging, device, prefix="BENCHMARK_TRAIN_ENV")
     # 以写模式创建 config.json；这里是可复现实验的重要配置快照。
     with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
         # vars(args) 把 Namespace 转字典；ensure_ascii=False 保留可能的非 ASCII 路径。
@@ -472,6 +477,18 @@ def main():
             scaler.step(optimizer)
             # 根据本步是否溢出动态调整下一步缩放因子。
             scaler.update()
+            if not train_memory_logged:
+                synchronize(device)
+                log_json(logging, "BENCHMARK_TRAIN_PEAK_GPU_MEMORY", {
+                    "measurement_policy": "peak after first complete forward/backward/optimizer step",
+                    "batch_size": args.batch_size,
+                    "input_size": args.img_size,
+                    "amp": bool(args.amp),
+                    "optimizer": "AdamW",
+                    "environment": train_environment,
+                    **peak_memory_mb(device),
+                })
+                train_memory_logged = True
             # 一个训练 batch 完成后全局步数加 1。
             global_step += 1
             # loss.item() 把 GPU 标量同步取回 Python，并追加到本 epoch 列表。

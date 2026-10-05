@@ -28,6 +28,8 @@ import sys
 import numpy as np
 # torch 构建模型、选择设备并运行推理。
 import torch
+import time
+from lib.benchmarking import InferenceBenchmark, log_environment, log_json, reset_peak_memory, synchronize
 # DataLoader 每次提供一个完整病例。
 from torch.utils.data import DataLoader
 # tqdm 显示病例级测试进度。
@@ -260,6 +262,11 @@ def main():
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     # 保存全部测试参数。
     logging.info("args=%s", args)
+    # 记录测试环境，确保显存和时间指标可以与具体 GPU、CUDA、PyTorch 版本对应。
+    # 测试前记录硬件/软件环境，所有后续时间和显存数值都与这份环境摘要对应。
+    benchmark_env = log_environment(logging, device)
+    benchmark = InferenceBenchmark()
+    reset_peak_memory(device)
 
     # 测试数据集逐项返回 image/label=[D,H,W] 和 case_name。
     dataset = ACDCVolumeDataset(args.root_path, args.list_dir, split="test")
@@ -302,6 +309,10 @@ def main():
         # 取单个病例名字符串。
         case_name = sampled["case_name"][0]
         # 按深度把切片分批送入二维 EMCAD。
+        # 端到端时间覆盖该病例的体数据进入 predict_volume 到得到完整预测体的全过程。
+        end_to_end_start = time.perf_counter()
+        synchronize(device)
+        forward_start = time.perf_counter()
         prediction = predict_volume(
             # 已加载权重并 eval 的模型。
             model,
@@ -315,6 +326,12 @@ def main():
             batch_size=args.inference_batch_size,
             # 输出 [D,H,W] int16 类别编号。
         )
+        synchronize(device)
+        benchmark.forward_seconds += time.perf_counter() - forward_start
+        # predict_volume 按切片 batch 前向；这里用预测体深度作为实际前向单位数。
+        benchmark.forward_units += int(image.shape[0])
+        benchmark.samples += 1
+        benchmark.end_to_end_seconds += time.perf_counter() - end_to_end_start
         # 对 RV/MYO/LV 分别计算 Dice、HD95、Jaccard、ASD。
         per_class = volume_metrics(
             # 预测类别体。
@@ -422,6 +439,21 @@ def main():
     rows.append(summary)
     # 写出 CSV。
     write_csv(output_csv, rows)
+
+    # 输出结构化运行开销摘要；不参与任何指标或 checkpoint 逻辑。
+    benchmark_result = benchmark.result(
+        device=device,
+        warmup=0,
+        repetitions=1,
+        batch_size=args.inference_batch_size,
+        input_size=args.img_size,
+        precision="float32",
+    )
+    benchmark_result["environment"] = benchmark_env
+    log_json(logging, "BENCHMARK_INFERENCE", benchmark_result)
+    # ACDC 原有入口主要写 CSV，因此额外保存独立 JSON，避免把结构化开销指标塞进指标表。
+    with open(os.path.join(output_dir, "benchmark_summary.json"), "w", encoding="utf-8") as stream:
+        json.dump(benchmark_result, stream, ensure_ascii=False, indent=2)
 
     # 打印终端表头。
     print("class       Dice       HD95       Jaccard       ASD")

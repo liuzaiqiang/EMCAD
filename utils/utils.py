@@ -1,5 +1,7 @@
 # PyTorch 张量与设备操作。
 import torch
+import time
+from lib.benchmarking import synchronize
 # nn 提供 DiceLoss 继承的 Module 基类。
 import torch.nn as nn
 # NumPy 用于体数据推理、类别掩膜和指标数组处理。
@@ -469,7 +471,7 @@ def calculate_dice_percase(pred, gt):
 # net.eval() 在每张切片循环内重复调用，语义正确但有少量额外开销；
 # 三维分支的 PNG 保存语句没有用 test_save_path 做条件保护，因而若 test_save_path=None，实际运行到 fig_gt.savefig 时可能报错。这里不修改
 # 这些历史行为，只在注释中把它们标明，便于你沿调用链排查问题。
-def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,  class_names=None):
+def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_save_path=None, case=None, z_spacing=1,  class_names=None, benchmark=None):
     # DataLoader 增加了 batch 维；去掉 batch 后搬到 CPU、断开计算图并转为 NumPy。
     # 评估函数不需要继续建立 autograd 图；detach() 解除历史计算图引用，cpu() 让后面的 NumPy、SciPy 和 SimpleITK 接口可以使用。若传入的是 [D,H,W] 而不是[1,D,H,W]，squeeze(0) 仍可能误删深度维，调用方必须保持约定的 batch 形状。
     image, label = image.squeeze(0).cpu().detach().numpy(), label.squeeze(0).cpu().detach().numpy()
@@ -520,11 +522,18 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
             # 切换评估模式，关闭 BatchNorm 统计更新等训练行为。
             net.eval()
             # 推理无需构建反向传播图，节省显存和计算。
+            if benchmark is not None:
+                synchronize(torch.device("cuda"))
+                forward_start = time.perf_counter()
             with torch.no_grad():
                 # no_grad 不会改变 net 的参数，只是停止保存反向传播所需的中间激活；
                 # 评估时这样可以显著降低显存，并避免误把测试过程接入训练图。
                 # EMCADNet 返回多尺度分割输出列表。
                 P = net(input)
+            if benchmark is not None:
+                synchronize(torch.device("cuda"))
+                benchmark.forward_seconds += time.perf_counter() - forward_start
+                benchmark.forward_units += 1
                 # 最后一个输出 P[-1] 是最高空间分辨率的最终预测头。
                 # EMCAD 的训练/推理接口返回多个尺度或多个解码头；这里选择列表最后
                 # 一个作为最终结果，而不是把所有输出平均。训练时的深监督仍可能使用
@@ -605,11 +614,18 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
         # 使用评估模式。
         net.eval()
         # 关闭梯度记录。
+        if benchmark is not None:
+            synchronize(torch.device("cuda"))
+            forward_start = time.perf_counter()
         with torch.no_grad():
             # 与三维分支保持同一推理规则：只取 P[-1]，softmax 后 argmax；这样两种
             # 输入维度的评估结果使用同一输出头和同一类别决策方式。
             # 获取模型多尺度输出。
             P = net(input)
+        if benchmark is not None:
+            synchronize(torch.device("cuda"))
+            benchmark.forward_seconds += time.perf_counter() - forward_start
+            benchmark.forward_units += 1
             # 选择最终最高分辨率预测头。
             base_net = net.module if hasattr(net, 'module') else net
             outputs = base_net.fuse_outputs(P) if hasattr(base_net, 'fuse_outputs') else P[-1]

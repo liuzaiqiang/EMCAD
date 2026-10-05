@@ -55,6 +55,7 @@ from utils.polyp_utils import (
 )
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
+from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -812,6 +813,10 @@ def main():
 
     logging.info("args=%s", args)
     logging.info("device=%s", device)
+    # 只观测首次完整训练更新后的峰值显存，不参与 loss、optimizer 或 checkpoint 决策。
+    train_memory_logged = False
+    reset_peak_memory(device)
+    train_environment = log_environment(logging, device, prefix="BENCHMARK_TRAIN_ENV")
     logging.info(
         "train_images=%d val_images=%d",
         len(train_loader.dataset),
@@ -989,6 +994,19 @@ def main():
 
                 scaler.step(optimizer)
                 scaler.update()
+                if not train_memory_logged:
+                    synchronize(device)
+                    log_json(logging, "BENCHMARK_TRAIN_PEAK_GPU_MEMORY", {
+                        "measurement_policy": "peak after first complete forward/backward/optimizer step",
+                        "dataset": args.dataset_name,
+                        "batch_size": args.batch_size,
+                        "input_size": args.img_size,
+                        "amp": bool(args.amp),
+                        "optimizer": "AdamW",
+                        "environment": train_environment,
+                        **peak_memory_mb(device),
+                    })
+                    train_memory_logged = True
 
                 global_step += 1
                 loss_value = float(

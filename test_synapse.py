@@ -24,6 +24,8 @@ import sys
 import numpy as np
 # torch 用于构建模型、加载 state_dict 和执行 GPU 推理。
 import torch
+import time
+from lib.benchmarking import InferenceBenchmark, log_environment, log_json, reset_peak_memory, synchronize
 # cuDNN 开关与训练入口一致，用于速度/确定性的取舍。
 import torch.backends.cudnn as cudnn
 # nn 在当前文件执行路径中未直接使用，是保留导入。
@@ -179,6 +181,9 @@ def inference(args, model, test_save_path=None):
     model.eval()
     # 第一次加 NumPy 数组后，metric_list 会成为 [8,4]：8 类 x 4 指标。
     metric_list = 0.0
+    # 统计现有 Synapse 测试函数的病例级端到端耗时，并由 test_single_volume
+    # 内部累计每张切片的实际模型 forward 时间；不改变预测或指标计算。
+    benchmark = getattr(args, "benchmark", None)
     # 逐病例迭代；tqdm 包装 enumerate 显示测试进度。
     for i_batch, sampled_batch in tqdm(enumerate(testloader)):
         # 取得病例张量最后两个空间维；h、w 后续未使用，属于保留调试变量。
@@ -187,12 +192,18 @@ def inference(args, model, test_save_path=None):
         image, label, case_name = sampled_batch["image"], sampled_batch["label"], sampled_batch['case_name'][0]
         # test_single_volume 内部逐切片推理，返回 8 行，每行是 (Dice,HD95,Jaccard,ASD)。
         # 网络四个输出中只取 P[-1]；softmax 将 9 通道 logits 变概率，argmax 选像素类别。
+        end_to_end_start = time.perf_counter()
         metric_i = test_single_volume(image, label, model, classes=args.num_classes,
                                       patch_size=[args.img_size, args.img_size],
                                       # z_spacing=1 用于保存体数据间距；class_names 用于叠加图图例和日志语义。
-                                      test_save_path=test_save_path, case=case_name, z_spacing=1, class_names=classes)
+                                      test_save_path=test_save_path, case=case_name, z_spacing=1, class_names=classes,
+                                      benchmark=benchmark)
         # 把当前 [8,4] 指标矩阵加到跨病例累计值。
         metric_list += np.array(metric_i)
+        if benchmark is not None:
+            synchronize(next(model.parameters()).device)
+            benchmark.samples += 1
+            benchmark.end_to_end_seconds += time.perf_counter() - end_to_end_start
         # 先沿类别维求当前病例的 4 项宏平均并写日志。
         logging.info('idx %d case %s mean_dice %f mean_hd95 %f, mean_jacard %f mean_asd %f' % (i_batch, case_name,
                                                                                                np.mean(metric_i,
@@ -411,4 +422,18 @@ if __name__ == "__main__":
         # None 表示不提供保存路径，但 utils 中的逐切片叠加图代码也依赖路径，需注意当前实现耦合。
         test_save_path = None
     # 启动整测试集推理；返回的状态字符串未被接收，最终结果查看日志与输出文件。
+    # 记录环境并把 benchmark 对象挂到 args，保持原 inference 调用接口不变。
+    args.benchmark = InferenceBenchmark()
+    reset_peak_memory(next(model.parameters()).device)
+    benchmark_env = log_environment(logging, next(model.parameters()).device)
     inference(args, model, test_save_path)
+    benchmark_result = args.benchmark.result(
+        device=next(model.parameters()).device,
+        warmup=0,
+        repetitions=1,
+        batch_size=1,
+        input_size=args.img_size,
+        precision="float32",
+    )
+    benchmark_result["environment"] = benchmark_env
+    log_json(logging, "BENCHMARK_INFERENCE", benchmark_result)

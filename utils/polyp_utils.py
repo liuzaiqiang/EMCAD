@@ -11,6 +11,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
+from lib.benchmarking import synchronize
 # MedPy 在此文件中用于真正的 HD95 和 ASSD 表面距离计算。
 from medpy import metric
 # tqdm 仅包装数据加载器以显示评估进度。
@@ -600,6 +602,7 @@ def evaluate_loader(
         save_probabilities=False,
         compute_surface=True,
         description="Polyp evaluation",
+        benchmark=None,
 ):
     # 只有请求输出目录时才创建文件夹；纯指标评估不会写预测图。
     if output_dir:
@@ -637,6 +640,8 @@ def evaluate_loader(
                 original_sizes,
                 names,
         ) in tqdm(loader, desc=description):
+            # 端到端计时覆盖当前样本从进入评估循环到指标/文件处理完成的完整路径。
+            end_to_end_start = time.perf_counter()
             # 图像移到目标设备并统一为 float32；目标在逐病例计算时仍从 CPU 数组读取。
             images = images.to(
                 device=device,
@@ -644,11 +649,18 @@ def evaluate_loader(
             )
 
             # model_outputs 返回 [p4,p3,p2,p1]；p1 消融取最后一头，融合模式使用训练时配置的算子。
+            if benchmark is not None:
+                synchronize(device)
+                forward_start = time.perf_counter()
             outputs = model_outputs(
                 model,
                 images,
                 mode="test",
             )
+            if benchmark is not None:
+                synchronize(device)
+                benchmark.forward_seconds += time.perf_counter() - forward_start
+                benchmark.forward_units += int(images.shape[0])
             core_model = model.module if isinstance(model, nn.DataParallel) else model
             logits = (
                 core_model.fuse_outputs(outputs)
@@ -741,6 +753,9 @@ def evaluate_loader(
                         **metrics,
                     }
                 )
+                if benchmark is not None:
+                    benchmark.samples += 1
+                    benchmark.end_to_end_seconds += time.perf_counter() - end_to_end_start
 
                 # 请求输出时把布尔预测转换为 OpenCV 可写的 0/255 单通道图像。
                 if output_dir:

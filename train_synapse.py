@@ -101,7 +101,7 @@ parser.add_argument('--img_size', type=int, default=224, help='input patch size 
 # 期望使用的 GPU 数；大于 1 时 trainer.py 才尝试 nn.DataParallel。
 parser.add_argument('--n_gpu', type=int, default=1, help='total gpu')
 # Windows 使用多进程 DataLoader 需要额外的 spawn 处理；默认 0 便于本机先稳定启动，Linux 可显式调大。
-parser.add_argument('--num_workers', type=int, default=0, help='DataLoader workers; use 0 on Windows')
+parser.add_argument('--num_workers', type=int, default=8, help='DataLoader workers; use 0 on Windows')
 # 1 表示确定性模式，0 表示允许 cuDNN benchmark 选择更快但可能不完全可复现的算法。
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
