@@ -130,11 +130,6 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
-  --fusion_mode "${FUSION_MODE}" \
-  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
-  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
-  --caa_mode "${CAA_MODE}" \
-  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

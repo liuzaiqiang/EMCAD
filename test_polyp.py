@@ -160,11 +160,6 @@ def parse_args():
     )
 
     # 与训练一致的融合与 CAA 结构参数；缺省值会在 main 中由 checkpoint 配置覆盖。
-    parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
-    parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
-    parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
-    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
-    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 推理输入的统一正方形边长。
     parser.add_argument(
@@ -286,9 +281,6 @@ def restore_checkpoint_model_options(args):
         "concatenation": "--concatenation",
         "img_size": "--img_size",
         "grayscale": "--grayscale",
-        "fusion_mode": "--fusion_mode",
-        "caa_mode": "--caa_mode",
-        "caa_residual_scale": "--caa_residual_scale",
         "merge_instance_masks": "--merge_instance_masks",
     }
     for field, option in options.items():

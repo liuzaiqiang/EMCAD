@@ -35,7 +35,6 @@ from utils.dataloader_polyp import get_loader
 # 二分类模型、损失、评测、检查点和设备辅助函数。
 from utils.polyp_utils import (
     # 二分类像素级可靠性融合的融合/校准辅助损失。
-    binary_fusion_auxiliary_loss,
     # 构建 EMCADNet。
     build_model,
     # 在验证/测试加载器上统计 Dice/IoU 等。
@@ -174,11 +173,6 @@ def parse_args():
         default="./pretrained_pth/pvt/",
     )
     # 模块消融参数；p1/off 分别关闭融合与内容感知抗混叠上采样。
-    parser.add_argument("--fusion_mode", choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"], default="p1")
-    parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
-    parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
-    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
-    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -572,12 +566,6 @@ def resized_batch(images, masks, image_size, rate):
 def main():
     # 解析参数；ISIC/BUSI包装器可替换该函数。
     args = parse_args()
-
-    # 非 p1 融合需要正权重监督，否则像素可靠性头会以未训练状态参与推理。
-    if args.fusion_loss_weight < 0 or args.reliability_loss_weight < 0:
-        raise ValueError("fusion and reliability loss weights must be non-negative")
-    if args.fusion_mode != "p1" and args.fusion_loss_weight == 0:
-        raise ValueError("fusion_loss_weight must be positive when fusion_mode is not p1")
 
     # 验证间隔必须是正整数。
     if args.validate_every < 1:
@@ -976,13 +964,6 @@ def main():
                         args.supervision,
                     )
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
-                    if args.fusion_loss_weight > 0 and args.fusion_mode != "p1":
-                        loss = loss + args.fusion_loss_weight * binary_fusion_auxiliary_loss(
-                            model,
-                            outputs,
-                            scaled_masks,
-                            reliability_loss_weight=args.reliability_loss_weight,
-                        )
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)

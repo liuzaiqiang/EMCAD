@@ -99,14 +99,6 @@ parser.add_argument('--checkpoint', type=str, default='',
 # 当显式传入训练配置文件时，按其中记录的模型参数创建网络，避免测试结构与 checkpoint 不匹配。
 parser.add_argument('--train_config', type=str, default='',
                     help='training config.json next to the checkpoint; model settings are loaded from it')
-parser.add_argument('--fusion_mode', type=str, default='p1',
-                    choices=['p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'],
-                    help='must match the training checkpoint')
-parser.add_argument('--fusion_loss_weight', type=float, default=0.0)
-parser.add_argument('--reliability_loss_weight', type=float, default=1.0)
-parser.add_argument('--caa_mode', type=str, default='off',
-                    choices=['off', 'aa_only', 'content_only', 'caa'])
-parser.add_argument('--caa_residual_scale', type=float, default=0.1)
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -144,8 +136,7 @@ if args.train_config:
     config_keys_to_restore = (
         'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
         'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
-        'pretrained_dir', 'supervision', 'fusion_mode', 'fusion_loss_weight',
-        'reliability_loss_weight', 'caa_mode', 'caa_residual_scale',
+        'pretrained_dir', 'supervision',
         'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
     )
     for config_key in config_keys_to_restore:
@@ -364,9 +355,6 @@ if __name__ == "__main__":
         "model_pth", args.dataset, f"encoder_{args.encoder}", f"img_size_{args.img_size}",
         f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
         f"maxEpochs_{args.max_epochs}")
-    snapshot_path += '_fusion_{}_fw{}_reliability{}_caa_{}_rs{}'.format(
-        args.fusion_mode, args.fusion_loss_weight, args.reliability_loss_weight,
-        args.caa_mode, args.caa_residual_scale)
 
 
 
@@ -374,9 +362,7 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     fusion_mode=args.fusion_mode, caa_mode=args.caa_mode,
-                     caa_residual_scale=args.caa_residual_scale)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

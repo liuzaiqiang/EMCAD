@@ -93,13 +93,6 @@ def parse_args():
     parser.add_argument("--concatenation", action="store_true")
     # 预训练目录仍是 build_model 所需属性，但测试构造时 pretrain=False，不会加载它。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
-    parser.add_argument("--fusion_mode", default="p1",
-                        choices=["p1", "fixed_sum", "global_scalar", "pixel_reliability"])
-    parser.add_argument("--fusion_loss_weight", type=float, default=0.0)
-    parser.add_argument("--reliability_loss_weight", type=float, default=1.0)
-    parser.add_argument("--caa_mode", default="off",
-                        choices=["off", "aa_only", "content_only", "caa"])
-    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 每张切片进入模型前缩放到的正方形尺寸，须与训练设置相符。
     parser.add_argument("--img_size", type=int, default=256)
@@ -141,9 +134,6 @@ def restore_checkpoint_config(args):
         "activation_mscb": "--activation_mscb",
         "no_dw_parallel": "--no_dw_parallel",
         "concatenation": "--concatenation",
-        "fusion_mode": "--fusion_mode",
-        "caa_mode": "--caa_mode",
-        "caa_residual_scale": "--caa_residual_scale",
         "img_size": "--img_size",
     }
     for field, option in options.items():
