@@ -159,7 +159,9 @@ def parse_args():
         default="./pretrained_pth/pvt/",
     )
 
-    # 与训练一致的融合与 CAA 结构参数；缺省值会在 main 中由 checkpoint 配置覆盖。
+    # 与训练一致的 CAA 结构参数；缺省值会在 main 中由 checkpoint 配置覆盖。
+    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
+    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 推理输入的统一正方形边长。
     parser.add_argument(
@@ -281,6 +283,8 @@ def restore_checkpoint_model_options(args):
         "concatenation": "--concatenation",
         "img_size": "--img_size",
         "grayscale": "--grayscale",
+        "caa_mode": "--caa_mode",
+        "caa_residual_scale": "--caa_residual_scale",
         "merge_instance_masks": "--merge_instance_masks",
     }
     for field, option in options.items():

@@ -49,6 +49,8 @@ ARCHITECTURE_OPTIONS = {
     "no_dw_parallel": "--no_dw_parallel",
     # 相加/拼接聚合开关。
     "concatenation": "--concatenation",
+    "caa_mode": "--caa_mode",
+    "caa_residual_scale": "--caa_residual_scale",
     # 模型输入尺寸。
     "img_size": "--img_size",
     # 灰度/RGB 模式。
@@ -188,7 +190,7 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 配置缺字段意味着无法完整重建训练模型。
-        if field not in config:
+        if field not in config and field not in {"caa_mode", "caa_residual_scale"}:
             # 报告具体字段。
             raise RuntimeError(
                 # 错误正文。
@@ -203,7 +205,7 @@ def _parse_args():
         # 规范化保存值以比较 tuple/list。
         configured = _normalized(
             # 配置字段值。
-            config[field]
+            config.get(field, "off" if field == "caa_mode" else 0.1)
         )
         # 规范化当前 argparse 值。
         current = _normalized(
@@ -240,7 +242,7 @@ def _parse_args():
             # 属性名。
             field,
             # 原始配置值。
-            config[field],
+            configured,
         )
 
     # ISIC 加载器不允许灰度，若训练配置异常则立即报错。

@@ -88,6 +88,8 @@ ARCHITECTURE_OPTIONS = {
         # 命令行选项。
         "--concatenation"
     ),
+    "caa_mode": "--caa_mode",
+    "caa_residual_scale": "--caa_residual_scale",
     # 输入尺寸。
     "img_size": "--img_size",
     # 灰度模式。
@@ -257,7 +259,7 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 缺字段无法确定 state_dict shape。
-        if field not in config:
+        if field not in config and field not in {"caa_mode", "caa_residual_scale"}:
             # 报告字段。
             raise RuntimeError(
                 # 错误正文。
@@ -272,7 +274,7 @@ def _parse_args():
         # 规范保存值。
         configured = _normalized(
             # config值。
-            config[field]
+            config.get(field, "off" if field == "caa_mode" else 0.1)
         )
         # 规范当前命令行解析值。
         current = _normalized(
@@ -311,7 +313,7 @@ def _parse_args():
             # 属性名。
             field,
             # 值。
-            config[field],
+            configured,
         )
 
     # BUSI 检查点不应是灰度输入。

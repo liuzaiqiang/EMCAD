@@ -99,9 +99,10 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # PVTv2 本地预训练权重所在目录；ResNet 采用自身加载路径。
         pretrained_dir=args.pretrained_dir,
-        # 仅在像素可靠性融合消融开启时创建对应可靠性头。
         # 将内容感知抗混叠模式传给 EMCAD 的 EUCB 上采样路径。
-        # 内容门控残差强度；关闭 CAA 时该参数不起作用。
+        caa_mode=args.caa_mode,
+        # 内容门控残差初始强度；关闭 CAA 时 EUCB 沿用基础模型结构。
+        caa_residual_scale=args.caa_residual_scale,
     )
 
 

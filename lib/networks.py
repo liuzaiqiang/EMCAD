@@ -61,7 +61,8 @@ class EMCADNet(nn.Module):
     # --------------------------------------------------------------------------
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
-                 activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/'):
+                 activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
+                 caa_mode='off', caa_residual_scale=0.1):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
         # conv block to convert single channel to 3 channels
@@ -198,7 +199,8 @@ class EMCADNet(nn.Module):
         # 需要区分论文描述与当前调用默认值：本构造函数的 activation 默认实参是 'relu'，实际建层始终以传入字符串为准。
         # 这里只“创建”解码器各层，尚未流过任何图像；真正的张量计算发生在 forward 的 self.decoder(...) 调用中。
         self.decoder = EMCAD(channels=channels, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                             dw_parallel=dw_parallel, add=add, lgag_ks=lgag_ks, activation=activation)
+                             dw_parallel=dw_parallel, add=add, lgag_ks=lgag_ks, activation=activation,
+                             caa_mode=caa_mode, caa_residual_scale=caa_residual_scale)
 
         # 打印仅 EMCAD 解码器的参数量，便于核对轻量化设计。解码器参数统计不包含编码器和下面的四个 segmentation head。
         print('Model %s created, param count: %d' % ('EMCAD decoder: ',

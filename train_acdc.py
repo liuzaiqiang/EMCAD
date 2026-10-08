@@ -109,6 +109,9 @@ def parse_args():
     parser.add_argument("--no_pretrain", action="store_true")
     # PVT 预训练权重所在目录。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
+    parser.add_argument("--caa_mode", default="off",
+                        choices=["off", "aa_only", "content_only", "caa"])
+    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(

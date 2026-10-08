@@ -67,8 +67,9 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
-        # 输出融合方式必须与训练 checkpoint 的结构一致。
-        # CAA 模式和残差尺度必须与训练 checkpoint 一致。
+        # CAA 结构和残差初始尺度必须与训练 checkpoint 一致。
+        caa_mode=args.caa_mode,
+        caa_residual_scale=args.caa_residual_scale,
     )
 
 
