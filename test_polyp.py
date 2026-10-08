@@ -162,6 +162,7 @@ def parse_args():
     # 与训练一致的 CAA 结构参数；缺省值会在 main 中由 checkpoint 配置覆盖。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_boundary_refinement", type=int, choices=[0, 1], default=0)
 
     # 推理输入的统一正方形边长。
     parser.add_argument(
@@ -285,6 +286,7 @@ def restore_checkpoint_model_options(args):
         "grayscale": "--grayscale",
         "caa_mode": "--caa_mode",
         "caa_residual_scale": "--caa_residual_scale",
+        "use_boundary_refinement": "--use_boundary_refinement",
         "merge_instance_masks": "--merge_instance_masks",
     }
     for field, option in options.items():

@@ -51,6 +51,7 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 from lib.model_complexity import log_model_complexity
+from utils.boundary_utils import boundary_loss
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
@@ -228,6 +229,10 @@ def trainer_synapse(args, model, snapshot_path):
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名P表示 prediction list。
             # 注意，mode='train' 只是你这个 EMCAD forward() 的参数，不能替代 PyTorch 的 model.train()。真正决定 BatchNorm、Dropout 是否处于训练状态的是模型的 training 属性。
             P = model(image_batch, mode='train')
+            boundary_logits = None
+            if args.use_boundary_refinement:
+                boundary_logits = P[-1]
+                P = P[:4]
             # 兼容只返回单张量的其他模型：统一包装为列表，后续监督代码只处理 list。
             # 如果模型只返回一个 Tensor，就把它包装为只有一个元素的列表。这样后面统一使用 P[index]，不用为单输出模型和多输出模型各写一套逻辑。
             if not isinstance(P, list):
@@ -285,6 +290,9 @@ def trainer_synapse(args, model, snapshot_path):
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
+
+            if boundary_logits is not None:
+                loss += args.boundary_loss_weight * boundary_loss(boundary_logits, label_batch)
 
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
             """

@@ -60,6 +60,8 @@ from utils.acdc_utils import (
     load_checkpoint,
     # 把模型单张量/元组输出统一转换为 logits 列表。
     model_outputs,
+    model_outputs_with_boundary,
+    boundary_loss,
     # 对完整体数据按深度分批推理并拼回类别图。
     predict_volume,
     # 同时固定 Python、NumPy、PyTorch、CUDA 与 cuDNN 行为。
@@ -112,6 +114,8 @@ def parse_args():
     parser.add_argument("--caa_mode", default="off",
                         choices=["off", "aa_only", "content_only", "caa"])
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_boundary_refinement", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--boundary_loss_weight", type=float, default=0.1)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -442,7 +446,7 @@ def main():
             # 进入自动混合精度上下文；scaler 未启用时等同普通前向。
             with autocast(enabled=scaler.is_enabled()):
                 # EMCAD 训练前向并统一转成 list；典型 4 个输出均为 [B,4,224,224] logits。
-                outputs = model_outputs(model, images, mode="train")
+                outputs, boundary_logits = model_outputs_with_boundary(model, images, mode="train")
                 # 按监督策略组合输出，每组计算 0.3*CE+0.7*Dice，再把所有组相加。
                 loss = supervised_loss(
                     # 四级 logits 列表。
@@ -457,6 +461,8 @@ def main():
                     dice_loss=dice_loss,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
+                if boundary_logits is not None:
+                    loss = loss + args.boundary_loss_weight * boundary_loss(boundary_logits, labels)
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。

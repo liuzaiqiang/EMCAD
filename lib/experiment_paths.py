@@ -55,6 +55,8 @@ def make_experiment_dir(args, family, output_root=None):
         ("caa", _value(args, "caa_mode")),
         ("seed", _value(args, "seed")),
     ]
+    if _value(args, "use_boundary_refinement", 0):
+        values.insert(-1, ("boundary", 1))
     parameter_parts = [
         Path(_safe_component(label) + "_" + _safe_component(value))
         for label, value in values

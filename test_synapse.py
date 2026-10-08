@@ -102,6 +102,7 @@ parser.add_argument('--train_config', type=str, default='',
 parser.add_argument('--caa_mode', type=str, default='off',
                     choices=['off', 'aa_only', 'content_only', 'caa'])
 parser.add_argument('--caa_residual_scale', type=float, default=0.1)
+parser.add_argument('--use_boundary_refinement', type=int, choices=[0, 1], default=0)
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -140,6 +141,7 @@ if args.train_config:
         'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
         'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
         'pretrained_dir', 'supervision', 'caa_mode', 'caa_residual_scale',
+        'use_boundary_refinement',
         'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
     )
     for config_key in config_keys_to_restore:
@@ -328,6 +330,8 @@ if __name__ == "__main__":
         args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
         run) + '_' + dataset_name + str(args.img_size)
     args.exp += '_caa_{}_rs{}'.format(args.caa_mode, args.caa_residual_scale)
+    if args.use_boundary_refinement:
+        args.exp += '_boundary_refinement'
 
     """
     # 重建内层 checkpoint 目录。
@@ -360,6 +364,8 @@ if __name__ == "__main__":
         f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
         f"maxEpochs_{args.max_epochs}")
     snapshot_path += '_caa_{}_rs{}'.format(args.caa_mode, args.caa_residual_scale)
+    if args.use_boundary_refinement:
+        snapshot_path += '_boundary_refinement'
 
 
 
@@ -368,7 +374,8 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale)
+                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale,
+                     boundary_refinement=bool(args.use_boundary_refinement))
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

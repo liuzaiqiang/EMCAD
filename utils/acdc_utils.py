@@ -18,6 +18,7 @@ from medpy import metric
 
 # 复用项目统一的编码器 + EMCAD 解码器封装。
 from lib.networks import EMCADNet
+from utils.boundary_utils import boundary_loss
 
 # ACDC 的网络输出共四类：背景、右心室、心肌、左心室。
 ACDC_NUM_CLASSES = 4
@@ -70,6 +71,7 @@ def build_model(args, pretrain):
         # CAA 结构和残差初始尺度必须与训练 checkpoint 一致。
         caa_mode=args.caa_mode,
         caa_residual_scale=args.caa_residual_scale,
+        boundary_refinement=args.use_boundary_refinement,
     )
 
 
@@ -79,6 +81,15 @@ def model_outputs(model, images, mode="test"):
     outputs = model(images, mode=mode)
     # 已是 list/tuple 时复制为列表；单张量则包成单元素列表。
     return list(outputs) if isinstance(outputs, (list, tuple)) else [outputs]
+
+
+def model_outputs_with_boundary(model, images, mode="train"):
+    """Return segmentation logits and the optional auxiliary boundary logits."""
+    outputs = model(images, mode=mode)
+    outputs = list(outputs) if isinstance(outputs, (list, tuple)) else [outputs]
+    if len(outputs) == 5:
+        return outputs[:4], outputs[4]
+    return outputs, None
 
 
 # ACDC 多类别 soft Dice 损失，直接使用 PyTorch one_hot 实现。

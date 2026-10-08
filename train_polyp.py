@@ -43,6 +43,8 @@ from utils.polyp_utils import (
     load_checkpoint,
     # 统一单输出/多输出列表。
     model_outputs,
+    model_outputs_with_boundary,
+    boundary_loss,
     # 解析 auto/cpu/cuda 设备。
     resolve_device,
     # 保存模型及优化状态。
@@ -175,6 +177,8 @@ def parse_args():
     # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_boundary_refinement", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--boundary_loss_weight", type=float, default=0.1)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -954,7 +958,7 @@ def main():
                 with autocast(
                         enabled=scaler.is_enabled()
                 ):
-                    outputs = model_outputs(
+                    outputs, boundary_logits = model_outputs_with_boundary(
                         model,
                         scaled_images,
                         mode="train",
@@ -965,6 +969,8 @@ def main():
                         scaled_masks,
                         args.supervision,
                     )
+                    if boundary_logits is not None:
+                        loss = loss + args.boundary_loss_weight * boundary_loss(boundary_logits, scaled_masks)
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 
                 scaler.scale(loss).backward()

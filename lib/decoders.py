@@ -943,10 +943,38 @@ class SAB(nn.Module):
 #   EUCB 的核固定为 3、激活固定采用其默认 ReLU；CAB/LGAG 的激活也使用各类默认 ReLU；
 #   num_classes、encoder、pretrain 都不属于 EMCAD，由 lib/networks.py 管理。
 # ==================================================================================================
+class BoundaryAwareDecoderRefinement(nn.Module):
+    """Lightweight boundary prediction and gated residual refinement."""
+
+    def __init__(self, channels, residual_scale=0.1):
+        super(BoundaryAwareDecoderRefinement, self).__init__()
+        hidden = max(channels // 2, 8)
+        self.boundary_head = nn.Sequential(
+            nn.Conv2d(channels, hidden, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(hidden),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, 1, kernel_size=1),
+        )
+        self.feature_refine = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, channels, kernel_size=3, padding=1, bias=False),
+        )
+        self.residual_scale = float(residual_scale)
+
+    def forward(self, x):
+        boundary_logits = self.boundary_head(x)
+        boundary_gate = torch.sigmoid(boundary_logits)
+        residual = self.feature_refine(x)
+        return x + self.residual_scale * boundary_gate * residual, boundary_logits
+
+
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1):
+                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1,
+                 boundary_refinement=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -1015,9 +1043,16 @@ class EMCAD(nn.Module):
         # SAB 不依赖通道数，因此四个解码级共享同一个 7x7 空间注意力模块及其参数。
         # 同一个 Module 多次调用在 PyTorch 中是合法的：每次根据当前输入重新计算权重图，但学习参数是同一份。
         self.sab = SAB()
+        self.boundary_refinement = bool(boundary_refinement)
+        self.boundary_refiner = (
+            BoundaryAwareDecoderRefinement(channels[3])
+            if self.boundary_refinement else None
+        )
+        self.last_boundary_logits = None
 
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
     def forward(self, x, skips):
+        self.last_boundary_logits = None
         # 本方法没有显式检查 len(skips)、通道或尺寸。若顺序误传为 [x1,x2,x3]，通常会在 LGAG 卷积
         # 因通道不符而报错；若相邻空间尺寸不是严格 2 倍，也会在 g1+x1 或 d+x 时报 shape mismatch。
         # skips 中的张量不会被原地修改；x1/x2/x3 变量接收的是 LGAG 返回的新乘法结果。
@@ -1101,6 +1136,9 @@ class EMCAD(nn.Module):
         # 最高分辨率解码特征的最终多尺度卷积细化。
         # 此行结束后 d1 通道仍是 channels[3]；类别数 num_classes 不在本类中出现。
         d1 = self.mscb1(d1)
+
+        if self.boundary_refiner is not None:
+            d1, self.last_boundary_logits = self.boundary_refiner(d1)
 
         # 返回顺序固定为从深到浅 [d4,d3,d2,d1]；网络封装器据此连接四个分割头。
         # 返回 list 而不是只返回 d1，是为了支持 deep supervision/mutation 等多输出训练策略；

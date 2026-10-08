@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 # EMCADNet 是编码器、EMCAD 解码器和四个分割头的总封装。
 from lib.networks import EMCADNet
+from utils.boundary_utils import boundary_loss
 
 # 这些名称决定逐病例结果、均值和标准差中需要统一汇总的核心指标列。
 # 前景像素数和表面距离是否有定义属于诊断字段，因此在写 CSV 时另外追加。
@@ -103,6 +104,7 @@ def build_model(args, pretrain):
         caa_mode=args.caa_mode,
         # 内容门控残差初始强度；关闭 CAA 时 EUCB 沿用基础模型结构。
         caa_residual_scale=args.caa_residual_scale,
+        boundary_refinement=args.use_boundary_refinement,
     )
 
 
@@ -120,6 +122,15 @@ def model_outputs(model, images, mode="test"):
 
     # 对单输出模型也包装成一元素列表，使监督和评估代码无需另写分支。
     return [outputs]
+
+
+def model_outputs_with_boundary(model, images, mode="train"):
+    """Return segmentation logits and the optional auxiliary boundary logits."""
+    outputs = model(images, mode=mode)
+    outputs = list(outputs) if isinstance(outputs, (list, tuple)) else [outputs]
+    if len(outputs) == 5:
+        return outputs[:4], outputs[4]
+    return outputs, None
 
 
 # 提取适合保存的参数字典；DataParallel 会在真实模型外再包一层 module。
