@@ -32,7 +32,10 @@ MAX_EPOCHS=400
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
-SUPERVISION="mutation"
+SUPERVISION="${SUPERVISION:-mutation}"
+
+
+
 BASE_LR=1e-4
 
 # 编码器是特征提取网络的结构名称；默认 PVTv2-B2 与 train_synapse.py 原有默认值一致。
@@ -96,11 +99,25 @@ USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
+#不确定性加权多尺度深监督
+USE_UNCERTAINTY_WEIGHTED_DS="${USE_UNCERTAINTY_WEIGHTED_DS:-0}"
+
+
+
 case "${USE_CONTENT_AWARE_ANTIALIAS}" in
   0) CAA_MODE="off" ;;
   1) CAA_MODE="caa" ;;
   *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
 esac
+
+case "${USE_UNCERTAINTY_WEIGHTED_DS}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS must be 0 or 1"; exit 1 ;;
+esac
+if [[ "${USE_UNCERTAINTY_WEIGHTED_DS}" == "1" && "${SUPERVISION}" != "deep_supervision" ]]; then
+  echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS=1 requires SUPERVISION=deep_supervision"
+  exit 1
+fi
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -133,6 +150,7 @@ PARAM_NAMES=(
   PID_FILE
   NUM_WORKERS
   USE_CONTENT_AWARE_ANTIALIAS
+  USE_UNCERTAINTY_WEIGHTED_DS
   CAA_MODE
   CAA_RESIDUAL_SCALE
 )
@@ -169,6 +187,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --uncertainty_weighted_ds "${USE_UNCERTAINTY_WEIGHTED_DS}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

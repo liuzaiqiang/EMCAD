@@ -55,6 +55,7 @@ from utils.polyp_utils import (
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from utils.uncertainty_supervision import UncertaintyScaleWeighter
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -177,6 +178,10 @@ def parse_args():
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
+    parser.add_argument(
+        "--uncertainty_weighted_ds", type=int, choices=[0, 1], default=0,
+        help="weight deep-supervision heads using training prediction entropy",
+    )
 
     # 多输出监督策略。
     parser.add_argument(
@@ -568,6 +573,8 @@ def resized_batch(images, masks, image_size, rate):
 def main():
     # 解析参数；ISIC/BUSI包装器可替换该函数。
     args = parse_args()
+    if args.uncertainty_weighted_ds and args.supervision != "deep_supervision":
+        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision deep_supervision")
 
     # 验证间隔必须是正整数。
     if args.validate_every < 1:
@@ -887,6 +894,7 @@ def main():
     writer = SummaryWriter(
         os.path.join(run_dir, "tensorboard")
     )
+    uncertainty_weighter = UncertaintyScaleWeighter(temperature=0.25, ema_decay=0.9)
 
     history_path = os.path.join(
         run_dir,
@@ -959,11 +967,17 @@ def main():
                         scaled_images,
                         mode="train",
                     )
+                    scale_weights = (
+                        uncertainty_weighter.update(outputs)
+                        if args.uncertainty_weighted_ds
+                        else None
+                    )
 
                     loss = supervised_structure_loss(
                         outputs,
                         scaled_masks,
                         args.supervision,
+                        scale_weights=scale_weights,
                     )
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 
@@ -1007,6 +1021,13 @@ def main():
                     optimizer.param_groups[0]["lr"],
                     global_step,
                 )
+                if scale_weights is not None:
+                    for scale_index, weight in enumerate(scale_weights):
+                        head = "p{}".format(4 - scale_index)
+                        writer.add_scalar("train/uncertainty_ds_weight_" + head,
+                                          weight.detach(), global_step)
+                        writer.add_scalar("train/uncertainty_ds_entropy_" + head,
+                                          uncertainty_weighter.entropy_ema[scale_index], global_step)
 
             progress.set_postfix(
                 loss="{:.4f}".format(

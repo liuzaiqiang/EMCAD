@@ -51,6 +51,7 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 from lib.model_complexity import log_model_complexity
+from utils.uncertainty_supervision import UncertaintyScaleWeighter
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
@@ -209,6 +210,7 @@ def trainer_synapse(args, model, snapshot_path):
     logging.info("{} iterations per epoch. {} max iterations ".format(len(trainloader), max_iterations))
     # 历史最好验证 Dice；初始 0，后续大于等于它时覆盖 best.pth。
     best_performance = 0.0
+    uncertainty_weighter = UncertaintyScaleWeighter(temperature=0.25, ema_decay=0.9)
     # tqdm 包装 epoch 范围，ncols=70 固定终端进度条宽度。创建一个带进度条的 epoch 循环。ncols=70 限制进度条宽度。
     iterator = tqdm(range(max_epoch), ncols=70)
 
@@ -264,8 +266,14 @@ def trainer_synapse(args, model, snapshot_path):
             loss = 0.0
             # 每个监督组内部采用 30% 交叉熵 + 70% Dice，与论文第 4.1 节一致。
             w_ce, w_dice = 0.3, 0.7
+            if args.uncertainty_weighted_ds and args.supervision == 'deep_supervision':
+                if len(P) != 4:
+                    raise RuntimeError('uncertainty-weighted deep supervision expects four outputs')
+                scale_weights = uncertainty_weighter.update(P)
+            else:
+                scale_weights = None
             # 遍历监督组合；mutation 为 16 次循环，其中空集不产生损失。s 是当前组合的索引列表。例如 mutation 中可能是 [0]、[1,3] 或 [0,1,2,3]。
-            for s in ss:
+            for group_index, s in enumerate(ss):
                 # 当前组合的聚合 logits 初始化为 0；加上第一个输出后成为 [B,9,H,W] Tensor。
                 iout = 0.0
                 # 空集合没有可监督输出，直接进入下一组合。空集没有任何输出可相加。如果不跳过，iout 会保持普通数字 0.0，既没有预测形状，也没有梯度关系，不能送入损失函数。这里的 continue 只跳过当前组合，不会跳过整个 batch。
@@ -284,7 +292,18 @@ def trainer_synapse(args, model, snapshot_path):
                 loss_dice = dice_loss(iout, label_batch, softmax=True)
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
-                loss += (w_ce * loss_ce + w_dice * loss_dice)
+                group_loss = w_ce * loss_ce + w_dice * loss_dice
+                if scale_weights is not None:
+                    loss += scale_weights[group_index] * group_loss
+                else:
+                    loss += group_loss
+
+            if scale_weights is not None:
+                for scale_index, scale_weight in enumerate(scale_weights):
+                    writer.add_scalar('train/uncertainty_ds_weight_p{}'.format(4 - scale_index),
+                                      scale_weight.detach(), iter_num)
+                    writer.add_scalar('train/uncertainty_ds_entropy_p{}'.format(4 - scale_index),
+                                      uncertainty_weighter.entropy_ema[scale_index].detach(), iter_num)
 
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
             """

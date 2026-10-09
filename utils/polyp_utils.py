@@ -243,9 +243,14 @@ def structure_loss(logits, mask):
 
 # 根据监督名称决定四个尺度 logits 怎样组合，再对每组调用 structure_loss。
 # 论文定位：主文 PDF 第5页/印刷第5页 §3.3 与 Eq.(11)；Fig.2 位于主文第4页。
-def supervised_structure_loss(outputs, mask, supervision):
+def supervised_structure_loss(outputs, mask, supervision, scale_weights=None):
     # 正常 EMCAD 有四个输出，顺序为 [p4,p3,p2,p1]，索引 3 即最高分辨率解码头 p1。
     count = len(outputs)
+    if scale_weights is not None:
+        if supervision != "deep_supervision" or len(scale_weights) != count:
+            raise ValueError(
+                "scale_weights require deep_supervision weights for every output"
+            )
     # indices 通常为 [0,1,2,3]，后续每个内层列表代表一组需要先相加的 logits。
     indices = list(range(count))
 
@@ -288,11 +293,14 @@ def supervised_structure_loss(outputs, mask, supervision):
     loss = mask.new_tensor(0.0)
 
     # 各组损失直接求和，不除以组数；所以 paper/deep/last/mutation 的原始损失量级不可横向比较。
-    for group in groups:
+    for group_index, group in enumerate(groups):
         # 组内先相加的是未激活 logits，而不是 Sigmoid 概率；随后 structure_loss 才负责概率化。
         logits = sum(outputs[index] for index in group)
         # 每一组都计算完整的加权 BCE + 加权 IoU。
-        loss = loss + structure_loss(logits, mask)
+        group_loss = structure_loss(logits, mask)
+        if scale_weights is not None:
+            group_loss = scale_weights[group_index] * group_loss
+        loss = loss + group_loss
 
     # 返回当前监督策略所有组合损失之和。
     return loss

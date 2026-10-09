@@ -80,6 +80,15 @@ ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
 
 #二分类任务，深监督方式是paper
 SUPERVISION="${SUPERVISION:-paper}"
+USE_UNCERTAINTY_WEIGHTED_DS="${USE_UNCERTAINTY_WEIGHTED_DS:-0}"
+case "${USE_UNCERTAINTY_WEIGHTED_DS}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS must be 0 or 1"; exit 1 ;;
+esac
+if [[ "${USE_UNCERTAINTY_WEIGHTED_DS}" == "1" && "${SUPERVISION}" != "deep_supervision" ]]; then
+  echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS=1 requires SUPERVISION=deep_supervision"
+  exit 1
+fi
 
 
 #####################################################################
@@ -243,9 +252,11 @@ RUN_ID="train_${DATASET}_${DATASET_NAME}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 参数快照追加到日志；终端只保留便于复制的RUN_ID和后续PID/路径信息。
-PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS RUN_ID)
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED SUPERVISION USE_UNCERTAINTY_WEIGHTED_DS FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS RUN_ID)
 {
   echo "[INFO] parameters:"
+  echo "[INFO] SUPERVISION=${SUPERVISION}"
+  echo "[INFO] USE_UNCERTAINTY_WEIGHTED_DS=${USE_UNCERTAINTY_WEIGHTED_DS}"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
   echo "---------------------------ready to train---------------------------------"
 } | tee -a "${LOG_FILE}"
@@ -264,6 +275,7 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
+  --uncertainty_weighted_ds "${USE_UNCERTAINTY_WEIGHTED_DS}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --merge_instance_masks "${MERGE_INSTANCE_MASKS}" \

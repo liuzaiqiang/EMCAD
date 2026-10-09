@@ -42,6 +42,13 @@ export IMG_SIZE="${IMG_SIZE:-256}"
 # Cell 论文协议使用固定尺度；这里关闭息肉/皮肤任务用的多尺度训练，仍允许显式覆盖。
 export USE_MULTI_SCALE_TRAINING="${USE_MULTI_SCALE_TRAINING:-0}"
 
+# 继承共享训练入口的独立开关；source 时保留调用者提供的值。
+export USE_UNCERTAINTY_WEIGHTED_DS="${USE_UNCERTAINTY_WEIGHTED_DS:-0}"
+case "${USE_UNCERTAINTY_WEIGHTED_DS}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS must be 0 or 1" >&2; exit 2 ;;
+esac
+
 # DSB18 默认将每张图像对应的实例掩膜并成语义前景；EM 默认是一张图像配一张语义掩膜。
 # 用 MERGE_INSTANCE_MASKS=0/1 显式覆盖时，两个数据集均尊重调用者选择。
 if [[ "${DATASET_NAME}" == "DSB18" ]]; then

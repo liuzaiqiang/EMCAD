@@ -74,6 +74,7 @@ from utils.dataset_ACDC import ACDCVolumeDataset, ACDCdataset, RandomGenerator
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from utils.uncertainty_supervision import UncertaintyScaleWeighter
 
 
 # 集中定义全部训练参数；函数返回 Namespace，不在 import 阶段直接解析命令行。
@@ -112,6 +113,10 @@ def parse_args():
     parser.add_argument("--caa_mode", default="off",
                         choices=["off", "aa_only", "content_only", "caa"])
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument(
+        "--uncertainty_weighted_ds", type=int, choices=[0, 1], default=0,
+        help="weight deep-supervision heads using training prediction entropy",
+    )
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -273,6 +278,8 @@ def validate(args, model, device, csv_path, epoch):
 def main():
     # 读取命令行配置。
     args = parse_args()
+    if args.uncertainty_weighted_ds and args.supervision != "deep_supervision":
+        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision deep_supervision")
     # 防御性检查：ACDC 标签约定必须始终是背景+3个结构共 4 类。
     if ACDC_NUM_CLASSES != 4:
         # 常量被意外改动时立即停止，避免用错误输出通道静默训练。
@@ -411,6 +418,7 @@ def main():
     scaler = GradScaler(enabled=args.amp and device.type == "cuda")
     # TensorBoard 日志保存到本次实验的 tensorboard 子目录。
     writer = SummaryWriter(os.path.join(snapshot_path, "tensooard"))
+    uncertainty_weighter = UncertaintyScaleWeighter(temperature=0.25, ema_decay=0.9)
 
     # 最好验证 Dice 从 -1 开始，确保第一次有效验证一定能保存 best.pth。
     best_dice = -1.0
@@ -443,6 +451,11 @@ def main():
             with autocast(enabled=scaler.is_enabled()):
                 # EMCAD 训练前向并统一转成 list；典型 4 个输出均为 [B,4,224,224] logits。
                 outputs = model_outputs(model, images, mode="train")
+                scale_weights = (
+                    uncertainty_weighter.update(outputs)
+                    if args.uncertainty_weighted_ds
+                    else None
+                )
                 # 按监督策略组合输出，每组计算 0.3*CE+0.7*Dice，再把所有组相加。
                 loss = supervised_loss(
                     # 四级 logits 列表。
@@ -455,6 +468,7 @@ def main():
                     ce_loss=ce_loss,
                     # 已构造的 4 类 DiceLoss 对象。
                     dice_loss=dice_loss,
+                    scale_weights=scale_weights,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
@@ -483,6 +497,13 @@ def main():
             writer.add_scalar("train/loss", loss.item(), global_step)
             # 记录常数基础学习率；代码没有 scheduler。
             writer.add_scalar("train/lr", args.base_lr, global_step)
+            if scale_weights is not None:
+                for scale_index, weight in enumerate(scale_weights):
+                    head = "p{}".format(4 - scale_index)
+                    writer.add_scalar("train/uncertainty_ds_weight_" + head,
+                                      weight.detach(), global_step)
+                    writer.add_scalar("train/uncertainty_ds_entropy_" + head,
+                                      uncertainty_weighter.entropy_ema[scale_index], global_step)
             # 在 tqdm 尾部显示当前 batch loss，保留 4 位小数。
             progress.set_postfix(loss="{:.4f}".format(loss.item()))
 

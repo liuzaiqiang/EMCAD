@@ -88,3 +88,4 @@ docs/
 !docs/
 docs/*
 !docs/EMCAD除Synapse外数据集融合与CAA接入说明.md
+!docs/不确定性加权多尺度深监督实验说明.md

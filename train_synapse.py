@@ -76,6 +76,8 @@ parser.add_argument('--pretrained_dir', type=str, default='./pretrained_pth/pvt/
 # 四输出监督策略：mutation=非空输出组合；deep_supervision=各输出单独；其余走最终输出。
 parser.add_argument('--supervision', type=str, default='mutation',
                     help='loss supervision: mutation, deep_supervision or last_layer')
+parser.add_argument('--uncertainty_weighted_ds', type=int, choices=[0, 1], default=0,
+                    help='use training-prediction-entropy weights for four deep-supervision heads')
 parser.add_argument('--caa_mode', type=str, default='off',
                     choices=['off', 'aa_only', 'content_only', 'caa'],
                     help='content-aware anti-aliasing upsampling mode for the three EUCB blocks')
@@ -101,6 +103,9 @@ parser.add_argument('--deterministic', type=int, default=1, help='whether use de
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
+
+if args.uncertainty_weighted_ds and args.supervision != 'deep_supervision':
+    parser.error('--uncertainty_weighted_ds=1 requires --supervision deep_supervision')
 
 # 只有直接运行 python train_synapse.py 时才进入；被其他模块 import 时不会自动训练。
 if __name__ == "__main__":

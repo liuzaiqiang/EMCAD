@@ -44,6 +44,15 @@ MAX_EPOCHS="${MAX_EPOCHS:-400}"
 DATASET="ACDC"
 BASE_LR="${BASE_LR:-1e-4}"
 SUPERVISION="${SUPERVISION:-mutation}"
+USE_UNCERTAINTY_WEIGHTED_DS="${USE_UNCERTAINTY_WEIGHTED_DS:-0}"
+case "${USE_UNCERTAINTY_WEIGHTED_DS}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS must be 0 or 1"; exit 1 ;;
+esac
+if [[ "${USE_UNCERTAINTY_WEIGHTED_DS}" == "1" && "${SUPERVISION}" != "deep_supervision" ]]; then
+  echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS=1 requires SUPERVISION=deep_supervision"
+  exit 1
+fi
 NUM_WORKERS="${NUM_WORKERS:-8}"
 
 
@@ -104,6 +113,7 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 
 {
   echo "[INFO] parameters:"
+  echo "[INFO] USE_UNCERTAINTY_WEIGHTED_DS=${USE_UNCERTAINTY_WEIGHTED_DS}"
   for name in "${PARAM_NAMES[@]}"; do
     printf '[INFO] %-24s=%s\n' "$name" "${!name}"
   done
@@ -123,6 +133,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --lgag_ks 3 \
   --activation_mscb relu6 \
   --supervision "${SUPERVISION}" \
+  --uncertainty_weighted_ds "${USE_UNCERTAINTY_WEIGHTED_DS}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
   --max_epochs "${MAX_EPOCHS}" \
