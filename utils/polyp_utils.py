@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 # EMCADNet 是编码器、EMCAD 解码器和四个分割头的总封装。
 from lib.networks import EMCADNet
+from utils.supervision_weights import supervision_group_weights
 
 # 这些名称决定逐病例结果、均值和标准差中需要统一汇总的核心指标列。
 # 前景像素数和表面距离是否有定义属于诊断字段，因此在写 CSV 时另外追加。
@@ -246,11 +247,6 @@ def structure_loss(logits, mask):
 def supervised_structure_loss(outputs, mask, supervision, scale_weights=None):
     # 正常 EMCAD 有四个输出，顺序为 [p4,p3,p2,p1]，索引 3 即最高分辨率解码头 p1。
     count = len(outputs)
-    if scale_weights is not None:
-        if supervision != "deep_supervision" or len(scale_weights) != count:
-            raise ValueError(
-                "scale_weights require deep_supervision weights for every output"
-            )
     # indices 通常为 [0,1,2,3]，后续每个内层列表代表一组需要先相加的 logits。
     indices = list(range(count))
 
@@ -289,6 +285,7 @@ def supervised_structure_loss(outputs, mask, supervision, scale_weights=None):
             "Unknown supervision: {}".format(supervision)
         )
 
+    group_weights = supervision_group_weights(scale_weights, groups, supervision, count)
     # 在 mask 所在设备上创建标量零，确保后续累加不会发生 CPU/CUDA 设备冲突。
     loss = mask.new_tensor(0.0)
 
@@ -299,7 +296,7 @@ def supervised_structure_loss(outputs, mask, supervision, scale_weights=None):
         # 每一组都计算完整的加权 BCE + 加权 IoU。
         group_loss = structure_loss(logits, mask)
         if scale_weights is not None:
-            group_loss = scale_weights[group_index] * group_loss
+            group_loss = group_weights[group_index] * group_loss
         loss = loss + group_loss
 
     # 返回当前监督策略所有组合损失之和。

@@ -573,8 +573,8 @@ def resized_batch(images, masks, image_size, rate):
 def main():
     # 解析参数；ISIC/BUSI包装器可替换该函数。
     args = parse_args()
-    if args.uncertainty_weighted_ds and args.supervision != "deep_supervision":
-        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision deep_supervision")
+    if args.uncertainty_weighted_ds and args.supervision not in ("mutation", "deep_supervision", "paper"):
+        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision mutation, deep_supervision or paper")
 
     # 验证间隔必须是正整数。
     if args.validate_every < 1:

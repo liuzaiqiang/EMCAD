@@ -278,8 +278,8 @@ def validate(args, model, device, csv_path, epoch):
 def main():
     # 读取命令行配置。
     args = parse_args()
-    if args.uncertainty_weighted_ds and args.supervision != "deep_supervision":
-        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision deep_supervision")
+    if args.uncertainty_weighted_ds and args.supervision not in ("mutation", "deep_supervision"):
+        raise ValueError("--uncertainty_weighted_ds=1 requires --supervision mutation or deep_supervision")
     # 防御性检查：ACDC 标签约定必须始终是背景+3个结构共 4 类。
     if ACDC_NUM_CLASSES != 4:
         # 常量被意外改动时立即停止，避免用错误输出通道静默训练。

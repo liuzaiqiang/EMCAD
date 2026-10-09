@@ -104,8 +104,8 @@ parser.add_argument('--seed', type=int, default=2222, help='random seed')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
 
-if args.uncertainty_weighted_ds and args.supervision != 'deep_supervision':
-    parser.error('--uncertainty_weighted_ds=1 requires --supervision deep_supervision')
+if args.uncertainty_weighted_ds and args.supervision not in ('mutation', 'deep_supervision'):
+    parser.error('--uncertainty_weighted_ds=1 requires --supervision mutation or deep_supervision')
 
 # 只有直接运行 python train_synapse.py 时才进入；被其他模块 import 时不会自动训练。
 if __name__ == "__main__":

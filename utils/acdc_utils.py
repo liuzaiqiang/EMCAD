@@ -18,6 +18,7 @@ from medpy import metric
 
 # 复用项目统一的编码器 + EMCAD 解码器封装。
 from lib.networks import EMCADNet
+from utils.supervision_weights import supervision_group_weights
 
 # ACDC 的网络输出共四类：背景、右心室、心肌、左心室。
 ACDC_NUM_CLASSES = 4
@@ -151,11 +152,7 @@ def supervised_loss(outputs, target, supervision, ce_loss, dice_loss,
     total = target.new_tensor(0.0, dtype=torch.float32)
     # 遍历 last/deep/mutation 策略生成的每个输出组合。
     groups = _supervision_groups(len(outputs), supervision)
-    if scale_weights is not None:
-        if supervision != "deep_supervision" or len(scale_weights) != len(outputs):
-            raise ValueError(
-                "scale_weights require deep_supervision weights for every output"
-            )
+    group_weights = supervision_group_weights(scale_weights, groups, supervision, len(outputs))
     for group_index, group in enumerate(groups):
         # 将组合中的多尺度 logits 逐元素相加；各输出已由 EMCADNet 上采样到同一尺寸。
         logits = sum(outputs[index] for index in group)
@@ -164,7 +161,7 @@ def supervised_loss(outputs, target, supervision, ce_loss, dice_loss,
         # Dice 权重 0.7，直接优化区域重叠。
         group_loss = group_loss + 0.7 * dice_loss(logits, target)
         if scale_weights is not None:
-            group_loss = scale_weights[group_index] * group_loss
+            group_loss = group_weights[group_index] * group_loss
         total = total + group_loss
     # 返回所有监督组合损失之和，原实现没有再除以组合数量。
     return total

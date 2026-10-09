@@ -114,8 +114,8 @@ case "${USE_UNCERTAINTY_WEIGHTED_DS}" in
   0|1) ;;
   *) echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS must be 0 or 1"; exit 1 ;;
 esac
-if [[ "${USE_UNCERTAINTY_WEIGHTED_DS}" == "1" && "${SUPERVISION}" != "deep_supervision" ]]; then
-  echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS=1 requires SUPERVISION=deep_supervision"
+if [[ "${USE_UNCERTAINTY_WEIGHTED_DS}" == "1" && "${SUPERVISION}" != "mutation" && "${SUPERVISION}" != "deep_supervision" ]]; then
+  echo "[ERROR] USE_UNCERTAINTY_WEIGHTED_DS=1 requires SUPERVISION=mutation or deep_supervision"
   exit 1
 fi
 

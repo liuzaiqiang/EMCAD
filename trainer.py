@@ -52,6 +52,7 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 from lib.model_complexity import log_model_complexity
 from utils.uncertainty_supervision import UncertaintyScaleWeighter
+from utils.supervision_weights import supervision_group_weights
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
@@ -266,12 +267,13 @@ def trainer_synapse(args, model, snapshot_path):
             loss = 0.0
             # 每个监督组内部采用 30% 交叉熵 + 70% Dice，与论文第 4.1 节一致。
             w_ce, w_dice = 0.3, 0.7
-            if args.uncertainty_weighted_ds and args.supervision == 'deep_supervision':
+            if args.uncertainty_weighted_ds:
                 if len(P) != 4:
                     raise RuntimeError('uncertainty-weighted deep supervision expects four outputs')
                 scale_weights = uncertainty_weighter.update(P)
             else:
                 scale_weights = None
+            group_weights = supervision_group_weights(scale_weights, ss, args.supervision, len(P))
             # 遍历监督组合；mutation 为 16 次循环，其中空集不产生损失。s 是当前组合的索引列表。例如 mutation 中可能是 [0]、[1,3] 或 [0,1,2,3]。
             for group_index, s in enumerate(ss):
                 # 当前组合的聚合 logits 初始化为 0；加上第一个输出后成为 [B,9,H,W] Tensor。
@@ -294,7 +296,7 @@ def trainer_synapse(args, model, snapshot_path):
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 group_loss = w_ce * loss_ce + w_dice * loss_dice
                 if scale_weights is not None:
-                    loss += scale_weights[group_index] * group_loss
+                    loss += group_weights[group_index] * group_loss
                 else:
                     loss += group_loss
 
