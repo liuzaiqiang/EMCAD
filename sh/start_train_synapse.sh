@@ -21,7 +21,7 @@ LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
 # 默认使用 GPU 0；连续队列也可通过 CUDA_DEVICE 覆盖，供启动器之间统一选卡。
-export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
+export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-1}"
 # 单卡队列默认 n_gpu=1；确定性模式沿用 train_synapse.py 原来的默认值 1。
 N_GPU="${N_GPU:-1}"
 #windows环境下运行时，设置为0（0 表示由主进程加载数据，最稳定）;linux环境下运行时，设置为8。
@@ -96,6 +96,13 @@ USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
+##Active Boundary Loss的开关，0为关闭，1为开启。其他不用动。
+#作用：直接约束预测边界移动
+USE_ACTIVE_BOUNDARY_LOSS="${USE_ACTIVE_BOUNDARY_LOSS:-1}"
+
+ACTIVE_BOUNDARY_LOSS_WEIGHT="${ACTIVE_BOUNDARY_LOSS_WEIGHT:-1.0}"
+case "${USE_ACTIVE_BOUNDARY_LOSS}" in 0|1) ;; *) echo "[ERROR] USE_ACTIVE_BOUNDARY_LOSS must be 0 or 1"; exit 1 ;; esac
+
 case "${USE_CONTENT_AWARE_ANTIALIAS}" in
   0) CAA_MODE="off" ;;
   1) CAA_MODE="caa" ;;
@@ -135,6 +142,8 @@ PARAM_NAMES=(
   USE_CONTENT_AWARE_ANTIALIAS
   CAA_MODE
   CAA_RESIDUAL_SCALE
+  USE_ACTIVE_BOUNDARY_LOSS
+  ACTIVE_BOUNDARY_LOSS_WEIGHT
 )
 
 {
@@ -169,6 +178,8 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --use_active_boundary_loss "${USE_ACTIVE_BOUNDARY_LOSS}" \
+  --active_boundary_loss_weight "${ACTIVE_BOUNDARY_LOSS_WEIGHT}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

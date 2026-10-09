@@ -12,6 +12,7 @@ import os
 import sys
 # time 统计完整训练耗时。
 import time
+from functools import partial
 # datetime 生成默认运行名。
 from datetime import datetime
 
@@ -55,6 +56,7 @@ from utils.polyp_utils import (
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from lib.active_boundary_loss import active_boundary_loss
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -175,6 +177,10 @@ def parse_args():
     # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_active_boundary_loss", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--active_boundary_loss_weight", type=float, default=1.0)
+    parser.add_argument("--active_boundary_max_boundary_ratio", type=float, default=0.01)
+    parser.add_argument("--active_boundary_distance_clip", type=float, default=20.0)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -964,6 +970,12 @@ def main():
                         outputs,
                         scaled_masks,
                         args.supervision,
+                        active_boundary_loss_fn=(partial(
+                            active_boundary_loss,
+                            max_boundary_ratio=args.active_boundary_max_boundary_ratio,
+                            distance_clip=args.active_boundary_distance_clip,
+                        ) if args.use_active_boundary_loss else None),
+                        active_boundary_loss_weight=(args.active_boundary_loss_weight if args.use_active_boundary_loss else 0.0),
                     )
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 

@@ -20,6 +20,7 @@ import json
 import logging
 # os 处理数据、输出和 checkpoint 路径。
 import os
+from functools import partial
 # sys.stdout 用于把日志同步显示到终端。
 import sys
 # datetime 为自动 run_name 生成时间戳。
@@ -74,6 +75,7 @@ from utils.dataset_ACDC import ACDCVolumeDataset, ACDCdataset, RandomGenerator
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from lib.active_boundary_loss import active_boundary_loss
 
 
 # 集中定义全部训练参数；函数返回 Namespace，不在 import 阶段直接解析命令行。
@@ -112,6 +114,10 @@ def parse_args():
     parser.add_argument("--caa_mode", default="off",
                         choices=["off", "aa_only", "content_only", "caa"])
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_active_boundary_loss", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--active_boundary_loss_weight", type=float, default=1.0)
+    parser.add_argument("--active_boundary_max_boundary_ratio", type=float, default=0.01)
+    parser.add_argument("--active_boundary_distance_clip", type=float, default=20.0)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -455,6 +461,12 @@ def main():
                     ce_loss=ce_loss,
                     # 已构造的 4 类 DiceLoss 对象。
                     dice_loss=dice_loss,
+                    active_boundary_loss_fn=(partial(
+                        active_boundary_loss,
+                        max_boundary_ratio=args.active_boundary_max_boundary_ratio,
+                        distance_clip=args.active_boundary_distance_clip,
+                    ) if args.use_active_boundary_loss else None),
+                    active_boundary_loss_weight=(args.active_boundary_loss_weight if args.use_active_boundary_loss else 0.0),
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。

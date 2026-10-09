@@ -243,7 +243,13 @@ def structure_loss(logits, mask):
 
 # 根据监督名称决定四个尺度 logits 怎样组合，再对每组调用 structure_loss。
 # 论文定位：主文 PDF 第5页/印刷第5页 §3.3 与 Eq.(11)；Fig.2 位于主文第4页。
-def supervised_structure_loss(outputs, mask, supervision):
+def supervised_structure_loss(
+        outputs,
+        mask,
+        supervision,
+        active_boundary_loss_fn=None,
+        active_boundary_loss_weight=0.0,
+):
     # 正常 EMCAD 有四个输出，顺序为 [p4,p3,p2,p1]，索引 3 即最高分辨率解码头 p1。
     count = len(outputs)
     # indices 通常为 [0,1,2,3]，后续每个内层列表代表一组需要先相加的 logits。
@@ -293,6 +299,10 @@ def supervised_structure_loss(outputs, mask, supervision):
         logits = sum(outputs[index] for index in group)
         # 每一组都计算完整的加权 BCE + 加权 IoU。
         loss = loss + structure_loss(logits, mask)
+        if active_boundary_loss_fn is not None and active_boundary_loss_weight:
+            loss = loss + active_boundary_loss_weight * active_boundary_loss_fn(
+                logits, mask
+            )
 
     # 返回当前监督策略所有组合损失之和。
     return loss

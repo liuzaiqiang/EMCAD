@@ -51,6 +51,7 @@ from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
 from lib.model_complexity import log_model_complexity
+from lib.active_boundary_loss import active_boundary_loss
 
 
 # 训练过程中调用的整病例评估函数；它返回所有病例、所有前景类别的平均 Dice 标量。
@@ -285,6 +286,13 @@ def trainer_synapse(args, model, snapshot_path):
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
+                if getattr(args, 'use_active_boundary_loss', 0):
+                    loss += getattr(args, 'active_boundary_loss_weight', 1.0) * active_boundary_loss(
+                        iout,
+                        label_batch,
+                        max_boundary_ratio=getattr(args, 'active_boundary_max_boundary_ratio', 0.01),
+                        distance_clip=getattr(args, 'active_boundary_distance_clip', 20.0),
+                    )
 
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
             """

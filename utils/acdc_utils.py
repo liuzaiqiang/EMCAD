@@ -145,7 +145,15 @@ def _supervision_groups(output_count, supervision):
 
 
 # 按指定监督策略累计交叉熵与 Dice 混合损失。
-def supervised_loss(outputs, target, supervision, ce_loss, dice_loss):
+def supervised_loss(
+        outputs,
+        target,
+        supervision,
+        ce_loss,
+        dice_loss,
+        active_boundary_loss_fn=None,
+        active_boundary_loss_weight=0.0,
+):
     # 在 target 所在设备创建标量浮点零，避免 CPU/CUDA 设备不一致。
     total = target.new_tensor(0.0, dtype=torch.float32)
     # 遍历 last/deep/mutation 策略生成的每个输出组合。
@@ -156,6 +164,10 @@ def supervised_loss(outputs, target, supervision, ce_loss, dice_loss):
         total = total + 0.3 * ce_loss(logits, target.long())
         # Dice 权重 0.7，直接优化区域重叠。
         total = total + 0.7 * dice_loss(logits, target)
+        if active_boundary_loss_fn is not None and active_boundary_loss_weight:
+            total = total + active_boundary_loss_weight * active_boundary_loss_fn(
+                logits, target
+            )
     # 返回所有监督组合损失之和，原实现没有再除以组合数量。
     return total
 
