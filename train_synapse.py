@@ -29,6 +29,7 @@ import torch.backends.cudnn as cudnn
 
 # EMCADNet 封装“编码器 + EMCAD 解码器 + 四个分割头”；结构细节在 lib/networks.py。
 from lib.networks import EMCADNet
+from lib.pixel_fusion import add_fusion_arguments, fusion_mode_from_args
 from lib.experiment_paths import make_experiment_dir
 # trainer_synapse 承担 DataLoader、损失、反向传播、验证和 checkpoint 保存。
 from trainer import trainer_synapse
@@ -100,6 +101,7 @@ parser.add_argument('--deterministic', type=int, default=1, help='whether use de
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
+add_fusion_arguments(parser)
 args = parser.parse_args()
 
 # 只有直接运行 python train_synapse.py 时才进入；被其他模块 import 时不会自动训练。
@@ -223,7 +225,8 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale)
+                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale,
+                     fusion_mode=fusion_mode_from_args(args))
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

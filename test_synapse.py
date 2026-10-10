@@ -42,6 +42,7 @@ from utils.utils import test_single_volume
 
 # EMCADNet 必须用与训练 checkpoint 一致的结构参数重新实例化。
 from lib.networks import EMCADNet
+from lib.pixel_fusion import add_fusion_arguments, fusion_mode_from_args, restore_fusion_config
 
 # 创建命令行解析器。
 parser = argparse.ArgumentParser()
@@ -125,6 +126,7 @@ parser.add_argument('--deterministic', type=int, default=1, help='whether use de
 # 固定 Python、NumPy、PyTorch 和 CUDA 随机状态。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
 # 解析命令行并生成全局 args。
+add_fusion_arguments(parser)
 args = parser.parse_args()
 
 # 训练入口会在每个实验目录保存完整 config.json；测试时优先读取这些已落盘的真实参数。
@@ -134,6 +136,7 @@ if args.train_config:
         raise FileNotFoundError('Training config not found: {}'.format(args.train_config))
     with open(args.train_config, 'r', encoding='utf-8') as config_stream:
         training_config = json.load(config_stream)
+    restore_fusion_config(args, training_config, sys.argv[1:])
     if training_config.get('dataset', 'Synapse') != 'Synapse':
         raise ValueError('The selected training config is not for Synapse: {}'.format(args.train_config))
     config_keys_to_restore = (
@@ -368,7 +371,8 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale)
+                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale,
+                     fusion_mode=fusion_mode_from_args(args))
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

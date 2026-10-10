@@ -83,6 +83,7 @@ USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
 FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
 RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+FUSION_DICE_SOFTMAX="${FUSION_DICE_SOFTMAX:-0}"
 CAA_MODE="${CAA_MODE:-caa}"
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
@@ -103,6 +104,7 @@ PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICE
 echo "[INFO] RUN_ID=${RUN_ID}"
 
 {
+  echo "[INFO] FUSION_DICE_SOFTMAX=${FUSION_DICE_SOFTMAX}"
   echo "[INFO] parameters:"
   for name in "${PARAM_NAMES[@]}"; do
     printf '[INFO] %-24s=%s\n' "$name" "${!name}"
@@ -131,6 +133,11 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
+  --use_pixel_reliability_fusion "${USE_PIXEL_RELIABILITY_FUSION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --fusion_dice_softmax "${FUSION_DICE_SOFTMAX}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &

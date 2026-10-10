@@ -62,9 +62,13 @@ class EMCADNet(nn.Module):
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
                  activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
-                 caa_mode='off', caa_residual_scale=0.1):
+                 caa_mode='off', caa_residual_scale=0.1, fusion_mode='p1'):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
+        self.fusion_mode = str(fusion_mode)
+        if self.fusion_mode not in {'p1', 'fixed_sum', 'global_scalar', 'pixel_reliability'}:
+            raise ValueError('Unknown fusion_mode: {}'.format(self.fusion_mode))
+        self._last_fusion_weights = None
         # conv block to convert single channel to 3 channels
         # 医学 CT/灰度图通常为 1 通道，而 ImageNet 编码器期望 3 通道，因此建立可学习的 1->3 适配器。
         # 这里选择“可学习的 1x1 卷积”而不是简单复制三份灰度图，意味着网络可以为三个输出通道学习不同缩放与组合。
@@ -218,6 +222,15 @@ class EMCADNet(nn.Module):
         # 最高分辨率 d1 输出头：channels[3] -> K。
         self.out_head1 = nn.Conv2d(channels[3], num_classes, 1)
 
+        # Append historical fusion heads after all existing layers; p1 consumes no RNG.
+        if self.fusion_mode == 'global_scalar':
+            self.global_fusion_logits = nn.Parameter(torch.zeros(4))
+        if self.fusion_mode == 'pixel_reliability':
+            self.reliability_head4 = nn.Conv2d(num_classes, 1, 1)
+            self.reliability_head3 = nn.Conv2d(num_classes, 1, 1)
+            self.reliability_head2 = nn.Conv2d(num_classes, 1, 1)
+            self.reliability_head1 = nn.Conv2d(num_classes, 1, 1)
+
     # ------------------------------ forward 契约 ------------------------------
     # 输入：四维 PyTorch 图像张量 x=[B,C,H,W]。代码专门适配 C=1，骨干原生适配 C=3。
     # 若传入 C=2、C=4 等其他通道数，本方法不会自动转换，随后骨干第一层通常会因期望 3 通道而报错。
@@ -276,6 +289,77 @@ class EMCADNet(nn.Module):
 
         # 非 test 模式返回完全相同的列表；mutation/deep supervision/last-layer 由训练器选择。
         return [p4, p3, p2, p1]
+
+    def _reliability_logits(self, outputs):
+        return torch.cat([
+            self.reliability_head4(outputs[0]),
+            self.reliability_head3(outputs[1]),
+            self.reliability_head2(outputs[2]),
+            self.reliability_head1(outputs[3]),
+        ], dim=1)
+
+    def fuse_outputs(self, outputs):
+        """Historical try5 fusion of full-resolution logits, not decoder features."""
+        if len(outputs) != 4:
+            raise ValueError('Expected four EMCAD outputs, got {}'.format(len(outputs)))
+        if self.fusion_mode == 'p1':
+            return outputs[-1]
+        if self.fusion_mode == 'fixed_sum':
+            return sum(outputs)
+        if self.fusion_mode == 'global_scalar':
+            weights = torch.softmax(self.global_fusion_logits, dim=0)
+            return sum(weight * output for weight, output in zip(weights, outputs))
+        reliability = self._reliability_logits(outputs)
+        weights = torch.softmax(reliability, dim=1)
+        self._last_fusion_weights = weights.detach()
+        return sum(weights[:, index:index + 1] * output for index, output in enumerate(outputs))
+
+    def fusion_auxiliary_loss(self, outputs, target, ce_loss=None, dice_loss=None,
+                              reliability_loss_weight=1.0, dice_softmax=False):
+        fused = self.fuse_outputs(outputs)
+        binary = fused.shape[1] == 1
+        if binary:
+            binary_target = target.float()
+            if binary_target.ndim == 3:
+                binary_target = binary_target.unsqueeze(1)
+            probability = torch.sigmoid(fused)
+            dims = (0, 2, 3)
+            intersection = (probability * binary_target).sum(dim=dims)
+            denominator = (probability.square() + binary_target.square()).sum(dim=dims)
+            dice = 1.0 - ((2.0 * intersection + 1e-5) / (denominator + 1e-5)).mean()
+            loss = 0.3 * F.binary_cross_entropy_with_logits(fused, binary_target) + 0.7 * dice
+        else:
+            # try5 used raw logits for auxiliary Dice. Keep this explicit and isolated.
+            loss = (0.3 * ce_loss(fused, target.long())
+                    + 0.7 * dice_loss(fused, target, softmax=bool(dice_softmax)))
+        if self.fusion_mode == 'pixel_reliability':
+            with torch.no_grad():
+                if binary:
+                    correctness = torch.cat([
+                        ((torch.sigmoid(output.detach()) >= 0.5)
+                         == (binary_target >= 0.5)).float() for output in outputs
+                    ], dim=1)
+                else:
+                    correctness = torch.stack([
+                        (torch.argmax(torch.softmax(output.detach(), dim=1), dim=1)
+                         == target).float() for output in outputs
+                    ], dim=1)
+            # The target is detached; BCE still backpropagates through head input logits.
+            loss = loss + float(reliability_loss_weight) * F.binary_cross_entropy_with_logits(
+                self._reliability_logits(outputs), correctness)
+        return loss
+
+    def fusion_weight_statistics(self):
+        if self.fusion_mode == 'global_scalar':
+            weights = torch.softmax(self.global_fusion_logits.detach(), dim=0)
+            return {'mode': self.fusion_mode, 'mean': weights.cpu().tolist()}
+        if self.fusion_mode == 'pixel_reliability' and self._last_fusion_weights is not None:
+            weights = self._last_fusion_weights
+            return {'mode': self.fusion_mode,
+                    'mean': weights.mean(dim=(0, 2, 3)).cpu().tolist(),
+                    'std': weights.std(dim=(0, 2, 3), unbiased=False).cpu().tolist(),
+                    'min': float(weights.min().cpu()), 'max': float(weights.max().cpu())}
+        return {'mode': self.fusion_mode}
 
 # 直接运行本文件时执行一个 GPU 形状检查；被训练脚本 import 时不会进入该分支。
 if __name__ == '__main__':

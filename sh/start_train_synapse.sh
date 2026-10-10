@@ -35,6 +35,40 @@ BATCH_SIZE=16
 SUPERVISION="mutation"
 BASE_LR=1e-4
 
+#像素级可靠性多头融合总开关  0：使用原来的p1输出  1：按 FUSION_MODE 选择融合方式
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+#融合辅助损失中，可靠性正确性监督的权重。
+RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+#选择像素级可靠性融合。若设成 p1，即使总开关为 1，实际也不会使用融合。
+FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
+#整个融合辅助损失的权重
+FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
+#多分类融合辅助 Dice 使用 softmax 后的概率；设为 0 才是前面说的早期 try5 raw-logit 写法。
+FUSION_DICE_SOFTMAX="${FUSION_DICE_SOFTMAX:-1}"
+
+
+
+# 内容感知抗混叠上采样总开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+##CAA 内容感知残差的初始强度，不是 CAA 总开关。
+CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
+
+
+case "${USE_PIXEL_RELIABILITY_FUSION}" in
+  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
+  1) ;;
+  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
+esac
+
+
+
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0) CAA_MODE="off" ;;
+  1) CAA_MODE="caa" ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
+
+
 # 编码器是特征提取网络的结构名称；默认 PVTv2-B2 与 train_synapse.py 原有默认值一致。
 # 可在启动队列前写 ENCODER=pvt_v2_b0 或 ENCODER=resnet34 来切换整个队列的结构。
 # 仅填写 lib/networks.py 实现的名称，避免该文件对未知名称静默回退到 B2。
@@ -91,16 +125,7 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_encoder_${ENCODER}_imgSize_${IMG_SIZE}_sup
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
-# CAA 开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 
-CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
-
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  0) CAA_MODE="off" ;;
-  1) CAA_MODE="caa" ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
-esac
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -135,6 +160,11 @@ PARAM_NAMES=(
   USE_CONTENT_AWARE_ANTIALIAS
   CAA_MODE
   CAA_RESIDUAL_SCALE
+  USE_PIXEL_RELIABILITY_FUSION
+  FUSION_MODE
+  FUSION_LOSS_WEIGHT
+  RELIABILITY_LOSS_WEIGHT
+  FUSION_DICE_SOFTMAX
 )
 
 {
@@ -168,6 +198,11 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
+  --use_pixel_reliability_fusion "${USE_PIXEL_RELIABILITY_FUSION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --fusion_dice_softmax "${FUSION_DICE_SOFTMAX}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 

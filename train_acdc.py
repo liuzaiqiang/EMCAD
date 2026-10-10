@@ -12,6 +12,7 @@
 
 # argparse 定义命令行接口。
 import argparse
+from lib.pixel_fusion import add_fusion_arguments, record_fusion_weights
 # csv 把每个验证病例、每个器官的 Dice 按 epoch 追加到表格。
 import csv
 # json 保存本次实验完整参数 config.json。
@@ -156,6 +157,7 @@ def parse_args():
     # auto 自动选 CUDA/CPU，也可显式传 cpu、cuda、cuda:1 等 torch device 字符串。
     parser.add_argument("--device", default="auto")
     # 实际解析命令行并返回配置对象。
+    add_fusion_arguments(parser)
     return parser.parse_args()
 
 
@@ -457,6 +459,12 @@ def main():
                     dice_loss=dice_loss,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
+                fusion_model = model.module if hasattr(model, 'module') else model
+                if fusion_model.fusion_mode != 'p1' and args.fusion_loss_weight > 0:
+                    loss = loss + args.fusion_loss_weight * fusion_model.fusion_auxiliary_loss(
+                        outputs, labels, ce_loss, dice_loss,
+                        reliability_loss_weight=args.reliability_loss_weight,
+                        dice_softmax=args.fusion_dice_softmax)
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。
@@ -477,6 +485,7 @@ def main():
                 train_memory_logged = True
             # 一个训练 batch 完成后全局步数加 1。
             global_step += 1
+            record_fusion_weights(model, writer, global_step)
             # loss.item() 把 GPU 标量同步取回 Python，并追加到本 epoch 列表。
             epoch_losses.append(float(loss.item()))
             # 记录逐步训练损失。

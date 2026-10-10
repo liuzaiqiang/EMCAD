@@ -63,11 +63,12 @@ ACTIVATION_MSCB="${ACTIVATION_MSCB:-relu6}"
 SUPERVISION="${SUPERVISION:-paper}"
 
 # 两项创新可分别消融；关闭可靠性融合时使用原始 p1 输出，关闭 CAA 时使用原始 EUCB 上采样。
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
 USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
 FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
 FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
 RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+FUSION_DICE_SOFTMAX="${FUSION_DICE_SOFTMAX:-0}"
 CAA_MODE="${CAA_MODE:-caa}"
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 case "${USE_PIXEL_RELIABILITY_FUSION}" in
@@ -156,6 +157,7 @@ PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY SUPERVISION NUM_WORKERS SEED DETERMINISTIC FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE RUN_ID)
 {
   echo "[INFO] parameters:"
+  echo "[INFO] USE_PIXEL_RELIABILITY_FUSION=${USE_PIXEL_RELIABILITY_FUSION} FUSION_DICE_SOFTMAX=${FUSION_DICE_SOFTMAX}"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
   echo "---------------------------ready to train---------------------------------"
 } | tee -a "${LOG_FILE}"
@@ -189,6 +191,11 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_isic.py \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
   --caa_mode "${CAA_MODE}" \
+  --use_pixel_reliability_fusion "${USE_PIXEL_RELIABILITY_FUSION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --fusion_dice_softmax "${FUSION_DICE_SOFTMAX}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --pretrained_dir "${PRETRAINED_DIR}" \
   --img_size "${IMG_SIZE}" \

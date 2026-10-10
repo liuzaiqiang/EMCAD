@@ -11,6 +11,7 @@
 
 # argparse 当前未被直接使用，属于从通用训练模板保留的工程导入。
 import argparse
+from lib.pixel_fusion import record_fusion_weights
 import csv
 import json
 # logging 同时把训练过程写入 train.log 并输出到终端。
@@ -287,6 +288,12 @@ def trainer_synapse(args, model, snapshot_path):
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
 
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
+            fusion_model = model.module if hasattr(model, 'module') else model
+            if fusion_model.fusion_mode != 'p1' and args.fusion_loss_weight > 0:
+                loss = loss + args.fusion_loss_weight * fusion_model.fusion_auxiliary_loss(
+                    P, label_batch, ce_loss, dice_loss,
+                    reliability_loss_weight=args.reliability_loss_weight,
+                    dice_softmax=args.fusion_dice_softmax)
             """
             用两个输出的极小例子模拟
             若只有 P=[P0,P1]，使用 mutation：
@@ -338,6 +345,7 @@ def trainer_synapse(args, model, snapshot_path):
 
             # 一个 batch 更新完成后，全局 step 加 1。
             iter_num = iter_num + 1
+            record_fusion_weights(model, writer, iter_num)
             # 将本step学习率写入 TensorBoard 的 info/lr 曲线。
             writer.add_scalar('info/lr', lr_, iter_num)
             # 将包含所有监督组合之和的总损失写入 info/total_loss。

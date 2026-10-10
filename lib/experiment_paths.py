@@ -55,6 +55,14 @@ def make_experiment_dir(args, family, output_root=None):
         ("caa", _value(args, "caa_mode")),
         ("seed", _value(args, "seed")),
     ]
+    # Keep existing CAA-only paths unchanged; isolate enabled fusion experiments.
+    if _value(args, 'use_pixel_reliability_fusion', 0) and _value(args, 'fusion_mode', 'p1') != 'p1':
+        values[-1:-1] = [
+            ('fusion', _value(args, 'fusion_mode')),
+            ('fusion_loss', _value(args, 'fusion_loss_weight')),
+            ('reliability_loss', _value(args, 'reliability_loss_weight')),
+            ('fusion_dice_softmax', _value(args, 'fusion_dice_softmax')),
+        ]
     parameter_parts = [
         Path(_safe_component(label) + "_" + _safe_component(value))
         for label, value in values

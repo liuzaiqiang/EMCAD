@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 # EMCADNet 是编码器、EMCAD 解码器和四个分割头的总封装。
 from lib.networks import EMCADNet
+from lib.pixel_fusion import fusion_mode_from_args, inference_logits
 
 # 这些名称决定逐病例结果、均值和标准差中需要统一汇总的核心指标列。
 # 前景像素数和表面距离是否有定义属于诊断字段，因此在写 CSV 时另外追加。
@@ -103,6 +104,7 @@ def build_model(args, pretrain):
         caa_mode=args.caa_mode,
         # 内容门控残差初始强度；关闭 CAA 时 EUCB 沿用基础模型结构。
         caa_residual_scale=args.caa_residual_scale,
+        fusion_mode=fusion_mode_from_args(args),
     )
 
 
@@ -616,7 +618,7 @@ def evaluate_loader(
                 benchmark.forward_seconds += time.perf_counter() - forward_start
                 benchmark.forward_units += int(images.shape[0])
             core_model = model.module if isinstance(model, nn.DataParallel) else model
-            logits = outputs[-1]
+            logits = inference_logits(core_model, outputs)
 
             # 一个 batch 内逐图恢复各自原始尺寸、计算指标和保存结果。
             for index, name in enumerate(names):

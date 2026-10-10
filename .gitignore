@@ -88,3 +88,4 @@ docs/
 !docs/
 docs/*
 !docs/EMCAD除Synapse外数据集融合与CAA接入说明.md
+!docs/像素级可靠性多头融合恢复与12数据集接入说明.md

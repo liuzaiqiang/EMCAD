@@ -1,5 +1,6 @@
 # argparse 定义 Polyp/BUSI/ISIC 共用训练命令行接口。
 import argparse
+from lib.pixel_fusion import add_fusion_arguments, record_fusion_weights
 # csv 追加 epoch 级训练历史与逐病例验证指标。
 import csv
 # json 保存可复现实验配置。
@@ -408,6 +409,7 @@ def parse_args():
     )
 
     # 解析实际命令行并返回 Namespace。
+    add_fusion_arguments(parser)
     return parser.parse_args()
 
 
@@ -966,6 +968,12 @@ def main():
                         args.supervision,
                     )
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
+                    fusion_model = model.module if hasattr(model, 'module') else model
+                    if fusion_model.fusion_mode != 'p1' and args.fusion_loss_weight > 0:
+                        loss = loss + args.fusion_loss_weight * fusion_model.fusion_auxiliary_loss(
+                            outputs, scaled_masks,
+                            reliability_loss_weight=args.reliability_loss_weight,
+                            dice_softmax=args.fusion_dice_softmax)
 
                 scaler.scale(loss).backward()
                 scaler.unscale_(optimizer)
@@ -992,6 +1000,7 @@ def main():
                     train_memory_logged = True
 
                 global_step += 1
+                record_fusion_weights(model, writer, global_step)
                 loss_value = float(
                     loss.item()
                 )

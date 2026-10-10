@@ -57,6 +57,10 @@ export INPUT_CHANNELS="${INPUT_CHANNELS:-3}"
 # 以免严格模式 set -u 因变量未定义而在创建训练进程前退出；多卡时可在命令前覆盖。
 export N_GPU="${N_GPU:-1}"
 
+# Forward the same isolated controls to the shared binary training launcher.
+export USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
+export FUSION_DICE_SOFTMAX="${FUSION_DICE_SOFTMAX:-0}"
+
 # 在访问数据前检查通道数和掩膜合并开关，避免把非法值传入训练入口。
 [[ "${INPUT_CHANNELS}" == "1" || "${INPUT_CHANNELS}" == "3" ]] || {
   echo "[ERROR] INPUT_CHANNELS must be 1 or 3; got: ${INPUT_CHANNELS}" >&2

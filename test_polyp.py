@@ -1,5 +1,6 @@
 # argparse 定义 Polyp 验证/测试命令行参数。
 import argparse
+from lib.pixel_fusion import add_fusion_arguments, restore_fusion_config
 # json 保存机器可读的评估摘要与实际配置。
 import json
 # logging 同时记录到 test.log 和控制台。
@@ -260,6 +261,7 @@ def parse_args():
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
     # 返回 Namespace；后续 build_model/get_loader 直接读取其中字段。
+    add_fusion_arguments(parser)
     return parser.parse_args()
 
 
@@ -272,6 +274,7 @@ def restore_checkpoint_model_options(args):
         )
     with config_path.open("r", encoding="utf-8") as stream:
         config = json.load(stream)
+    restore_fusion_config(args, config, sys.argv[1:])
 
     options = {
         "encoder": "--encoder",

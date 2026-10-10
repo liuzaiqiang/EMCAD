@@ -87,7 +87,7 @@ SUPERVISION="${SUPERVISION:-paper}"
 
 # 独立消融开关；关闭时分别映射到 p1 与 EUCB 原始上采样路径。
 #像素级可靠性多头融合的总开关。 1：允许使用像素可靠性融合  0：关闭该创新点，强制回到 p1 输出
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
+USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-0}"
 #它决定四个 EMCAD 输出如何融合。当前代码支持四种模式：
 #p1:只使用 p1，即 outputs[-1] 这是原始单输出推理方式，也是关闭像素可靠性融合时的模式。
 # fixed_sum  outputs[0] + outputs[1] + outputs[2] + outputs[3]  四个输出直接相加，权重固定为 1。
@@ -109,6 +109,7 @@ FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
 # FUSION_MODE=pixel_reliability
 # FUSION_LOSS_WEIGHT>0
 RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
+FUSION_DICE_SOFTMAX="${FUSION_DICE_SOFTMAX:-0}"
 
 #####################################################################
 
@@ -246,6 +247,7 @@ PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS RUN_ID)
 {
   echo "[INFO] parameters:"
+  echo "[INFO] USE_PIXEL_RELIABILITY_FUSION=${USE_PIXEL_RELIABILITY_FUSION} FUSION_DICE_SOFTMAX=${FUSION_DICE_SOFTMAX}"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
   echo "---------------------------ready to train---------------------------------"
 } | tee -a "${LOG_FILE}"
@@ -265,6 +267,11 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
   --caa_mode "${CAA_MODE}" \
+  --use_pixel_reliability_fusion "${USE_PIXEL_RELIABILITY_FUSION}" \
+  --fusion_mode "${FUSION_MODE}" \
+  --fusion_loss_weight "${FUSION_LOSS_WEIGHT}" \
+  --reliability_loss_weight "${RELIABILITY_LOSS_WEIGHT}" \
+  --fusion_dice_softmax "${FUSION_DICE_SOFTMAX}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --merge_instance_masks "${MERGE_INSTANCE_MASKS}" \
   --pretrained_dir "${PRETRAINED_DIR}" \

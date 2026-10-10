@@ -11,6 +11,7 @@
 
 # argparse 定义 checkpoint、数据路径、模型结构和输出选项。
 import argparse
+from lib.pixel_fusion import add_fusion_arguments, restore_fusion_config
 # csv 把逐病例和总体指标写成结构化表格。
 import csv
 # logging 同时记录参数与逐病例指标。
@@ -116,6 +117,7 @@ def parse_args():
     # 出现后把离散预测类别图保存为压缩 NPZ。
     parser.add_argument("--save_npz", action="store_true")
     # 实际解析命令行。
+    add_fusion_arguments(parser)
     return parser.parse_args()
 
 
@@ -128,6 +130,7 @@ def restore_checkpoint_config(args):
         )
     with config_path.open("r", encoding="utf-8") as stream:
         config = json.load(stream)
+    restore_fusion_config(args, config, sys.argv[1:])
 
     options = {
         "encoder": "--encoder",
