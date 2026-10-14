@@ -81,6 +81,10 @@ parser.add_argument('--caa_mode', type=str, default='off',
                     help='content-aware anti-aliasing upsampling mode for the three EUCB blocks')
 parser.add_argument('--caa_residual_scale', type=float, default=0.1,
                     help='initial scale of the content-aware residual; must match the checkpoint')
+parser.add_argument('--use_area_adaptive_tversky', type=int, choices=[0, 1], default=0,
+                    help='add area adaptive foreground Tversky supervision to p1')
+parser.add_argument('--area_tversky_weight', type=float, default=1.0,
+                    help='weight of the optional p1 auxiliary loss')
 # 此参数在当前 trainer.py 中不控制循环终止，只参与实验目录命名；实际迭代数由 epoch 数决定。
 parser.add_argument('--max_iterations', type=int, default=50000, help='maximum epoch number to train')
 # 实际外层训练轮数；论文 Synapse 设置为 300 epoch。

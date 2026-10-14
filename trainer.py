@@ -50,6 +50,7 @@ from torch.cuda.amp import GradScaler, autocast
 from utils.dataset_synapse import Synapse_dataset, RandomGenerator
 # powerset生成监督组合；DiceLoss 计算多类软Dice；两个volume函数负责整体验证。
 from utils.utils import powerset, one_hot_encoder, DiceLoss, val_single_volume
+from utils.area_adaptive_tversky import area_adaptive_tversky_loss
 from lib.model_complexity import log_model_complexity
 
 
@@ -115,6 +116,8 @@ def inference(args, model, best_performance, validation_csv=None, epoch=None):
 
 # Synapse 训练主函数：args 提供配置，model 是已创建的 EMCADNet，snapshot_path 是本次实验目录。
 def trainer_synapse(args, model, snapshot_path):
+    if args.use_area_adaptive_tversky and args.area_tversky_weight <= 0:
+        raise ValueError("area_tversky_weight must be positive when enabled")
     # 配置文件日志；每条记录带时分秒和毫秒，写入当前实验目录的 train.log。
     logging.basicConfig(filename=snapshot_path + "/train.log", level=logging.INFO,
                         # message 是调用 logging.info 传入的正文。
@@ -262,6 +265,7 @@ def trainer_synapse(args, model, snapshot_path):
                 print("深监督组合：",ss)
             # 当前 batch 的总损失从 0 开始；首次加 Tensor 后自动变为带梯度的标量 Tensor。
             loss = 0.0
+            area_loss = None
             # 每个监督组内部采用 30% 交叉熵 + 70% Dice，与论文第 4.1 节一致。
             w_ce, w_dice = 0.3, 0.7
             # 遍历监督组合；mutation 为 16 次循环，其中空集不产生损失。s 是当前组合的索引列表。例如 mutation 中可能是 [0]、[1,3] 或 [0,1,2,3]。
@@ -285,6 +289,10 @@ def trainer_synapse(args, model, snapshot_path):
                 # 把该组合的加权损失累加到总损失；没有再除以组合数。
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
+
+            if args.use_area_adaptive_tversky:
+                area_loss = area_adaptive_tversky_loss(P[-1], label_batch)
+                loss += args.area_tversky_weight * area_loss
 
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
             """
@@ -342,6 +350,8 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             # 将包含所有监督组合之和的总损失写入 info/total_loss。
             writer.add_scalar('info/total_loss', loss, iter_num)
+            if area_loss is not None:
+                writer.add_scalar('info/area_adaptive_tversky', area_loss.detach(), iter_num)
             # 每 50个全局 step 打印一次细粒度训练日志。
             if iter_num % 50 == 0:
                 # loss.item() 把单元素 GPU Tensor 同步取回为 Python 数值用于格式化。

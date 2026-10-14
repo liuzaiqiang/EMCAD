@@ -28,7 +28,7 @@ N_GPU="${N_GPU:-1}"
 NUM_WORKERS=8
 
 SEED="${SEED:-2222}"
-MAX_EPOCHS=400
+MAX_EPOCHS=300
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
@@ -92,7 +92,16 @@ RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
 # CAA 开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
+USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+# 训练期小器官辅助监督。1 开启，0 关闭；不改变推理网络与 CAA。
+USE_AREA_ADAPTIVE_TVERSKY="${USE_AREA_ADAPTIVE_TVERSKY:-1}"
+AREA_TVERSKY_WEIGHT="${AREA_TVERSKY_WEIGHT:-1.0}"
+
+
+case "${USE_AREA_ADAPTIVE_TVERSKY}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_AREA_ADAPTIVE_TVERSKY must be 0 or 1"; exit 1 ;;
+esac
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
@@ -135,6 +144,8 @@ PARAM_NAMES=(
   USE_CONTENT_AWARE_ANTIALIAS
   CAA_MODE
   CAA_RESIDUAL_SCALE
+  USE_AREA_ADAPTIVE_TVERSKY
+  AREA_TVERSKY_WEIGHT
 )
 
 {
@@ -169,6 +180,8 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --use_area_adaptive_tversky "${USE_AREA_ADAPTIVE_TVERSKY}" \
+  --area_tversky_weight "${AREA_TVERSKY_WEIGHT}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

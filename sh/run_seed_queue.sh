@@ -14,11 +14,14 @@
 #   bash sh/run_seed_queue.sh busi 2222 3407
 #   DATASET_NAME=DSB18 bash sh/run_seed_queue.sh cell 2222 3407
 #   DATASET_NAME=EM bash sh/run_seed_queue.sh cell 2222 3407
+#   USE_CONTENT_AWARE_ANTIALIAS=1 USE_AREA_ADAPTIVE_TVERSKY=1 AREA_TVERSKY_WEIGHT=1.0 \
+#     bash sh/run_seed_queue.sh synapse 2222 3333 8899
 #
 # 可选环境变量：
 #   CUDA_DEVICE=0       选择物理 GPU；不设置时由各启动脚本采用自己的默认值。
 #   DATASET_NAME=...    选择 Polyp/ISIC 等启动器支持的具体子数据集。
 #   CONTINUE_ON_ERROR=1 单个 seed 失败后继续队列；默认失败即停止，避免漏看错误。
+#   USE_AREA_ADAPTIVE_TVERSKY=0/1 与 AREA_TVERSKY_WEIGHT 传给每个训练启动器。
 # -----------------------------------------------------------------------------
 
 # -e：未处理的错误时停止；-u：拒绝空的未定义变量；pipefail：管道任一环节失败即失败。
@@ -71,6 +74,7 @@ exec > >(tee -a "${QUEUE_LOG}") 2>&1
 
 echo "[QUEUE] 启动器=${LAUNCHER}"
 echo "[QUEUE] seeds=$*"
+echo "[QUEUE] USE_CONTENT_AWARE_ANTIALIAS=${USE_CONTENT_AWARE_ANTIALIAS:-launcher_default} USE_AREA_ADAPTIVE_TVERSKY=${USE_AREA_ADAPTIVE_TVERSKY:-0} AREA_TVERSKY_WEIGHT=${AREA_TVERSKY_WEIGHT:-1.0}"
 if [[ -n "${DATASET_NAME:-}" ]]; then
   echo "[QUEUE] DATASET_NAME=${DATASET_NAME}"
 fi

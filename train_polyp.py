@@ -55,6 +55,7 @@ from utils.polyp_utils import (
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from utils.area_adaptive_tversky import area_adaptive_tversky_loss
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -175,6 +176,8 @@ def parse_args():
     # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_area_adaptive_tversky", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--area_tversky_weight", type=float, default=1.0)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -568,6 +571,8 @@ def resized_batch(images, masks, image_size, rate):
 def main():
     # 解析参数；ISIC/BUSI包装器可替换该函数。
     args = parse_args()
+    if args.use_area_adaptive_tversky and args.area_tversky_weight <= 0:
+        raise ValueError("area_tversky_weight must be positive when enabled")
 
     # 验证间隔必须是正整数。
     if args.validate_every < 1:
@@ -954,6 +959,7 @@ def main():
                 with autocast(
                         enabled=scaler.is_enabled()
                 ):
+                    area_loss = None
                     outputs = model_outputs(
                         model,
                         scaled_images,
@@ -965,6 +971,11 @@ def main():
                         scaled_masks,
                         args.supervision,
                     )
+                    if args.use_area_adaptive_tversky:
+                        area_loss = area_adaptive_tversky_loss(
+                            outputs[-1], scaled_masks.squeeze(1)
+                        )
+                        loss = loss + args.area_tversky_weight * area_loss
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 
                 scaler.scale(loss).backward()
@@ -1002,6 +1013,8 @@ def main():
                     loss_value,
                     global_step,
                 )
+                if area_loss is not None:
+                    writer.add_scalar("train/area_adaptive_tversky", area_loss.detach(), global_step)
                 writer.add_scalar(
                     "train/lr",
                     optimizer.param_groups[0]["lr"],
