@@ -80,6 +80,9 @@ from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_pe
 def parse_args():
     # description 会显示在 python train_ACDC.py --help 的标题中。
     parser = argparse.ArgumentParser(description="Train EMCAD on ACDC")
+    parser.add_argument("--use_skip_alignment", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_bidirectional_consistency", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--consistency_weight", type=float, default=0.05)
     # ACDC 根目录，预期含 train/、valid/ 等子目录。
     parser.add_argument("--root_path", default="../data/ACDC")
     # 列表目录，至少需要 train.txt 和 valid.txt。
@@ -109,9 +112,6 @@ def parse_args():
     parser.add_argument("--no_pretrain", action="store_true")
     # PVT 预训练权重所在目录。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
-    parser.add_argument("--caa_mode", default="off",
-                        choices=["off", "aa_only", "content_only", "caa"])
-    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -442,7 +442,7 @@ def main():
             # 进入自动混合精度上下文；scaler 未启用时等同普通前向。
             with autocast(enabled=scaler.is_enabled()):
                 # EMCAD 训练前向并统一转成 list；典型 4 个输出均为 [B,4,224,224] logits。
-                outputs = model_outputs(model, images, mode="train")
+                outputs, consistency_loss = model(images, mode="train", return_alignment_loss=True)
                 # 按监督策略组合输出，每组计算 0.3*CE+0.7*Dice，再把所有组相加。
                 loss = supervised_loss(
                     # 四级 logits 列表。
@@ -457,6 +457,7 @@ def main():
                     dice_loss=dice_loss,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
+                loss = loss + args.consistency_weight * consistency_loss.mean()
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。
@@ -481,6 +482,7 @@ def main():
             epoch_losses.append(float(loss.item()))
             # 记录逐步训练损失。
             writer.add_scalar("train/loss", loss.item(), global_step)
+            writer.add_scalar("train/bidirectional_consistency", consistency_loss.mean().item(), global_step)
             # 记录常数基础学习率；代码没有 scheduler。
             writer.add_scalar("train/lr", args.base_lr, global_step)
             # 在 tqdm 尾部显示当前 batch loss，保留 4 位小数。

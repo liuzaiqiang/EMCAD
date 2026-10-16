@@ -36,6 +36,8 @@ EXPECTED_PROTOCOLS = {
 # 必须从训练 config.json 恢复并检查的模型结构字段及其命令行选项。
 ARCHITECTURE_OPTIONS = {
     # 编码器类型。
+    "use_skip_alignment": "--use_skip_alignment",
+    "use_bidirectional_consistency": "--use_bidirectional_consistency",
     "encoder": "--encoder",
     # MSDC 多尺度核。
     "kernel_sizes": "--kernel_sizes",
@@ -49,8 +51,6 @@ ARCHITECTURE_OPTIONS = {
     "no_dw_parallel": "--no_dw_parallel",
     # 相加/拼接聚合开关。
     "concatenation": "--concatenation",
-    "caa_mode": "--caa_mode",
-    "caa_residual_scale": "--caa_residual_scale",
     # 模型输入尺寸。
     "img_size": "--img_size",
     # 灰度/RGB 模式。
@@ -190,7 +190,7 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 配置缺字段意味着无法完整重建训练模型。
-        if field not in config and field not in {"caa_mode", "caa_residual_scale"}:
+        if field not in config and field not in {"use_skip_alignment", "use_bidirectional_consistency"}:
             # 报告具体字段。
             raise RuntimeError(
                 # 错误正文。
@@ -205,7 +205,7 @@ def _parse_args():
         # 规范化保存值以比较 tuple/list。
         configured = _normalized(
             # 配置字段值。
-            config.get(field, "off" if field == "caa_mode" else 0.1)
+            config.get(field, 0)
         )
         # 规范化当前 argparse 值。
         current = _normalized(

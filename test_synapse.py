@@ -45,6 +45,9 @@ from lib.networks import EMCADNet
 
 # 创建命令行解析器。
 parser = argparse.ArgumentParser()
+parser.add_argument("--use_skip_alignment", type=int, choices=[0, 1], default=0)
+parser.add_argument("--use_bidirectional_consistency", type=int, choices=[0, 1], default=0)
+parser.add_argument("--consistency_weight", type=float, default=0.05)
 
 # 完整体测试目录；默认名带 _new，与训练入口默认 volume_path 不同，需人工确认划分一致。
 parser.add_argument('--volume_path', type=str,
@@ -99,9 +102,6 @@ parser.add_argument('--checkpoint', type=str, default='',
 # 当显式传入训练配置文件时，按其中记录的模型参数创建网络，避免测试结构与 checkpoint 不匹配。
 parser.add_argument('--train_config', type=str, default='',
                     help='training config.json next to the checkpoint; model settings are loaded from it')
-parser.add_argument('--caa_mode', type=str, default='off',
-                    choices=['off', 'aa_only', 'content_only', 'caa'])
-parser.add_argument('--caa_residual_scale', type=float, default=0.1)
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -139,7 +139,7 @@ if args.train_config:
     config_keys_to_restore = (
         'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
         'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
-        'pretrained_dir', 'supervision', 'caa_mode', 'caa_residual_scale',
+        'pretrained_dir', 'supervision', 'use_skip_alignment', 'use_bidirectional_consistency',
         'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
     )
     for config_key in config_keys_to_restore:
@@ -327,7 +327,6 @@ if __name__ == "__main__":
     args.exp = args.encoder + '_EMCAD_kernel_sizes_' + str(args.kernel_sizes) + '_dw_' + dw_mode + '_' + aggregation + '_lgag_ks_' + str(args.lgag_ks) + '_ef' + str(
         args.expansion_factor) + '_act_mscb_' + args.activation_mscb + '_loss_' + args.supervision + '_output_final_layer_Run' + str(
         run) + '_' + dataset_name + str(args.img_size)
-    args.exp += '_caa_{}_rs{}'.format(args.caa_mode, args.caa_residual_scale)
 
     """
     # 重建内层 checkpoint 目录。
@@ -359,7 +358,6 @@ if __name__ == "__main__":
         "model_pth", args.dataset, f"encoder_{args.encoder}", f"img_size_{args.img_size}",
         f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}",
         f"maxEpochs_{args.max_epochs}")
-    snapshot_path += '_caa_{}_rs{}'.format(args.caa_mode, args.caa_residual_scale)
 
 
 
@@ -368,7 +366,8 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     caa_mode=args.caa_mode, caa_residual_scale=args.caa_residual_scale)
+                     use_skip_alignment=bool(args.use_skip_alignment),
+                     use_bidirectional_consistency=bool(args.use_bidirectional_consistency))
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 

@@ -227,7 +227,7 @@ def trainer_synapse(args, model, snapshot_path):
             # 训练模式前向：EMCADNet 返回由粗到细的四个全分辨率 logits，均为 [B,9,224,224]。
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名P表示 prediction list。
             # 注意，mode='train' 只是你这个 EMCAD forward() 的参数，不能替代 PyTorch 的 model.train()。真正决定 BatchNorm、Dropout 是否处于训练状态的是模型的 training 属性。
-            P = model(image_batch, mode='train')
+            P, consistency_loss = model(image_batch, mode='train', return_alignment_loss=True)
             # 兼容只返回单张量的其他模型：统一包装为列表，后续监督代码只处理 list。
             # 如果模型只返回一个 Tensor，就把它包装为只有一个元素的列表。这样后面统一使用 P[index]，不用为单输出模型和多输出模型各写一套逻辑。
             if not isinstance(P, list):
@@ -286,6 +286,8 @@ def trainer_synapse(args, model, snapshot_path):
                 # 因此 mutation(15组)的 loss 数值尺度天然大于 deep_supervision(4组)，两者不可直接横比。
                 loss += (w_ce * loss_ce + w_dice * loss_dice)
 
+            loss += args.consistency_weight * consistency_loss.mean()
+
             # try5 规定的融合辅助项；权重为 0 时不进入该分支，原监督损失保持不变。
             """
             用两个输出的极小例子模拟
@@ -342,6 +344,7 @@ def trainer_synapse(args, model, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             # 将包含所有监督组合之和的总损失写入 info/total_loss。
             writer.add_scalar('info/total_loss', loss, iter_num)
+            writer.add_scalar('info/bidirectional_consistency', consistency_loss.mean().detach(), iter_num)
             # 每 50个全局 step 打印一次细粒度训练日志。
             if iter_num % 50 == 0:
                 # loss.item() 把单元素 GPU Tensor 同步取回为 Python 数值用于格式化。

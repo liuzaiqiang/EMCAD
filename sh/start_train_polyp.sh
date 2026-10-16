@@ -93,6 +93,12 @@ USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
 # fixed_sum  outputs[0] + outputs[1] + outputs[2] + outputs[3]  四个输出直接相加，权重固定为 1。
 #global_scalar   为四个输出学习四个全局标量权重： softmax(w1, w2, w3, w4) 每个输出在整张图上使用同一个权重。
 #pixel_reliability  为每个像素、每个输出预测可靠性： 每个像素位置分别计算四个输出的权重  也就是说，模型不是简单平均四个输出，而是针对每个像素决定更信任哪个预测头。
+USE_SKIP_ALIGNMENT="${USE_SKIP_ALIGNMENT:-1}"
+USE_BIDIRECTIONAL_CONSISTENCY="${USE_BIDIRECTIONAL_CONSISTENCY:-1}"
+CONSISTENCY_WEIGHT="${CONSISTENCY_WEIGHT:-0.05}"
+for flag in "${USE_SKIP_ALIGNMENT}" "${USE_BIDIRECTIONAL_CONSISTENCY}"; do
+  [[ "${flag}" == "0" || "${flag}" == "1" ]] || { echo "[ERROR] alignment switches must be 0 or 1" >&2; exit 2; }
+done
 FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
 
 
@@ -115,7 +121,6 @@ RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
 
 
 
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
 
 
 
@@ -128,28 +133,9 @@ USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
 FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
 
 
-#它决定 EUCB 使用哪种上采样方式。
-# 值	         实际含义
-# off	          原始 EMCAD EUCB 上采样
-# aa_only	        只使用抗混叠上采样
-# content_only	只使用内容感知残差，不使用抗混叠基底
-# caa	抗混叠基底 + 内容感知残差
-CAA_MODE="${CAA_MODE:-caa}"
 
 
 
-#CAA 内容感知残差的初始缩放系数。
-# CAA 的核心计算可以简化为：output = base + scale * gate * residual
-#其中：
-# - base：抗混叠或最近邻上采样结果；
-# - gate：内容感知门控；
-# - residual：深度卷积残差；
-# - scale：残差强度。
-# 当前初始值为：
-# CAA_RESIDUAL_SCALE=0.1
-# 这表示模型开始训练时，内容感知残差以较小强度加入基础上采样路径，避免新模块一开始完全压过原始上采样结果。
-#0.1 是初始值，不是训练期间永远固定为 0.1。
-CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
 
 #这是多尺度训练总开关。
@@ -166,11 +152,6 @@ case "${USE_PIXEL_RELIABILITY_FUSION}" in
   0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
   1) ;;
   *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
-esac
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  0) CAA_MODE="off" ;;
-  1) ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
 esac
 case "${USE_MULTI_SCALE_TRAINING}" in
   0|1) ;;
@@ -242,8 +223,9 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_${DATASET_NAME}__imgSize${IMG_SIZE}_batchS
 RUN_ID="train_${DATASET}_${DATASET_NAME}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS USE_SKIP_ALIGNMENT USE_BIDIRECTIONAL_CONSISTENCY CONSISTENCY_WEIGHT RUN_ID)
+
 # 参数快照追加到日志；终端只保留便于复制的RUN_ID和后续PID/路径信息。
-PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT CAA_MODE CAA_RESIDUAL_SCALE USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS RUN_ID)
 {
   echo "[INFO] parameters:"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
@@ -263,9 +245,10 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
   --expansion_factor "${EXPANSION_FACTOR}" \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
+  --use_skip_alignment "${USE_SKIP_ALIGNMENT}" \
+  --use_bidirectional_consistency "${USE_BIDIRECTIONAL_CONSISTENCY}" \
+  --consistency_weight "${CONSISTENCY_WEIGHT}" \
   --supervision "${SUPERVISION}" \
-  --caa_mode "${CAA_MODE}" \
-  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   --merge_instance_masks "${MERGE_INSTANCE_MASKS}" \
   --pretrained_dir "${PRETRAINED_DIR}" \
   --img_size "${IMG_SIZE}" \

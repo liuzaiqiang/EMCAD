@@ -64,6 +64,9 @@ def parse_args():
         # 显示在 --help 顶部。
         description="Train EMCAD on one Polyp dataset"
     )
+    parser.add_argument("--use_skip_alignment", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_bidirectional_consistency", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--consistency_weight", type=float, default=0.05)
 
     # 准备数据总根，其下按数据集名和 train/val/test 组织。
     parser.add_argument(
@@ -172,9 +175,6 @@ def parse_args():
         # 默认目录。
         default="./pretrained_pth/pvt/",
     )
-    # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
-    parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
-    parser.add_argument("--caa_residual_scale", type=float, default=0.1)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -954,10 +954,8 @@ def main():
                 with autocast(
                         enabled=scaler.is_enabled()
                 ):
-                    outputs = model_outputs(
-                        model,
-                        scaled_images,
-                        mode="train",
+                    outputs, consistency_loss = model(
+                        scaled_images, mode="train", return_alignment_loss=True,
                     )
 
                     loss = supervised_structure_loss(
@@ -965,6 +963,8 @@ def main():
                         scaled_masks,
                         args.supervision,
                     )
+                    loss = loss + args.consistency_weight * consistency_loss.mean()
+                    # Record the unweighted auxiliary objective for the ablation study.
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 
                 scaler.scale(loss).backward()
@@ -1002,6 +1002,8 @@ def main():
                     loss_value,
                     global_step,
                 )
+                writer.add_scalar("train/bidirectional_consistency",
+                                  consistency_loss.mean().item(), global_step)
                 writer.add_scalar(
                     "train/lr",
                     optimizer.param_groups[0]["lr"],

@@ -52,7 +52,8 @@ def make_experiment_dir(args, family, output_root=None):
         ("kernels", _value(args, "kernel_sizes")),
         ("lgag_ks", _value(args, "lgag_ks")),
         ("act", _value(args, "activation_mscb")),
-        ("caa", _value(args, "caa_mode")),
+        ("align", _value(args, "use_skip_alignment")),
+        ("bidir", _value(args, "use_bidirectional_consistency")),
         ("seed", _value(args, "seed")),
     ]
     parameter_parts = [

@@ -85,22 +85,21 @@ case "${CONCATENATION}" in
 esac
 
 
+USE_SKIP_ALIGNMENT="${USE_SKIP_ALIGNMENT:-1}"
+USE_BIDIRECTIONAL_CONSISTENCY="${USE_BIDIRECTIONAL_CONSISTENCY:-1}"
+CONSISTENCY_WEIGHT="${CONSISTENCY_WEIGHT:-0.05}"
+for flag in "${USE_SKIP_ALIGNMENT}" "${USE_BIDIRECTIONAL_CONSISTENCY}"; do
+  [[ "${flag}" == "0" || "${flag}" == "1" ]] || { echo "[ERROR] alignment switches must be 0 or 1" >&2; exit 2; }
+done
+
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 TS="$(date +%F_%H%M%S)"
 LOG_FILE="${LOG_DIR}/train_${DATASET}_encoder_${ENCODER}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}.log"
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
-# CAA 开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
-USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
 
-CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
-case "${USE_CONTENT_AWARE_ANTIALIAS}" in
-  0) CAA_MODE="off" ;;
-  1) CAA_MODE="caa" ;;
-  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
-esac
 
 PARAM_NAMES=(
   CONDA_BASE
@@ -132,9 +131,9 @@ PARAM_NAMES=(
   RUN_ID
   PID_FILE
   NUM_WORKERS
-  USE_CONTENT_AWARE_ANTIALIAS
-  CAA_MODE
-  CAA_RESIDUAL_SCALE
+  USE_SKIP_ALIGNMENT
+  USE_BIDIRECTIONAL_CONSISTENCY
+  CONSISTENCY_WEIGHT
 )
 
 {
@@ -163,12 +162,13 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
   "${ARCH_FLAGS[@]}" \
+  --use_skip_alignment "${USE_SKIP_ALIGNMENT}" \
+  --use_bidirectional_consistency "${USE_BIDIRECTIONAL_CONSISTENCY}" \
+  --consistency_weight "${CONSISTENCY_WEIGHT}" \
   --supervision "${SUPERVISION}" \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
-  --caa_mode "${CAA_MODE}" \
-  --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

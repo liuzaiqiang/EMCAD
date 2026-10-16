@@ -63,6 +63,8 @@ EXPECTED_CLASS_COUNTS = {
 # 会影响模型结构/输入的 config 字段与命令行开关映射。
 ARCHITECTURE_OPTIONS = {
     # 编码器。
+    "use_skip_alignment": "--use_skip_alignment",
+    "use_bidirectional_consistency": "--use_bidirectional_consistency",
     "encoder": "--encoder",
     # MSDC 核尺寸。
     "kernel_sizes": "--kernel_sizes",
@@ -88,8 +90,6 @@ ARCHITECTURE_OPTIONS = {
         # 命令行选项。
         "--concatenation"
     ),
-    "caa_mode": "--caa_mode",
-    "caa_residual_scale": "--caa_residual_scale",
     # 输入尺寸。
     "img_size": "--img_size",
     # 灰度模式。
@@ -259,7 +259,7 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 缺字段无法确定 state_dict shape。
-        if field not in config and field not in {"caa_mode", "caa_residual_scale"}:
+        if field not in config and field not in {"use_skip_alignment", "use_bidirectional_consistency"}:
             # 报告字段。
             raise RuntimeError(
                 # 错误正文。
@@ -274,7 +274,7 @@ def _parse_args():
         # 规范保存值。
         configured = _normalized(
             # config值。
-            config.get(field, "off" if field == "caa_mode" else 0.1)
+            config.get(field, 0)
         )
         # 规范当前命令行解析值。
         current = _normalized(

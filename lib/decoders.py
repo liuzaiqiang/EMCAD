@@ -541,68 +541,9 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
 #   eucb2: 320@14x14 -> 128@28x28
 #   eucb1: 128@28x28 ->  64@56x56
 # --------------------------------------------------------------------------------------------------
-class ContentAwareAntiAliasUpsample(nn.Module):
-    """抗混叠基底与内容门控残差的可消融上采样。"""
-    def __init__(self, channels, mode='caa', residual_scale=0.1):
-        super(ContentAwareAntiAliasUpsample, self).__init__()
-        valid_modes = {'aa_only', 'content_only', 'caa'}
-        if mode not in valid_modes:
-            raise ValueError('Unknown content-aware upsampling mode: {}'.format(mode))
-        if float(residual_scale) < 0.0:
-            raise ValueError('Caa residual scale must be non-negative')
-        self.channels = int(channels)
-        self.mode = mode
-        self.residual_scale = (None if mode == 'aa_only' else
-                               nn.Parameter(torch.tensor(float(residual_scale))))
-
-        if self.mode == 'aa_only':
-            self.content_gate = None
-            self.residual_dw = None
-        else:
-            hidden = max(8, self.channels // 4)
-            self.content_gate = nn.Sequential(
-                nn.Conv2d(self.channels, hidden, kernel_size=1, bias=True),
-                act_layer('relu', inplace=True),
-                nn.Conv2d(hidden, 1, kernel_size=1, bias=True),
-            )
-            self.residual_dw = nn.Conv2d(
-                self.channels, self.channels, kernel_size=3, padding=1,
-                groups=self.channels, bias=False)
-        self.init_weights('normal')
-
-        kernel = torch.tensor(
-            [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0], [1.0, 2.0, 1.0]],
-            dtype=torch.float32) / 16.0
-        self.register_buffer('anti_alias_kernel', kernel.view(1, 1, 3, 3))
-
-    def forward(self, x):
-        if self.mode == 'content_only':
-            base = torch.nn.functional.interpolate(x, scale_factor=2, mode='nearest')
-        else:
-            kernel = self.anti_alias_kernel.to(dtype=x.dtype, device=x.device)
-            kernel = kernel.expand(self.channels, 1, 3, 3)
-            pad_mode = 'reflect' if min(x.shape[-2:]) > 1 else 'replicate'
-            filtered = torch.nn.functional.pad(x, (1, 1, 1, 1), mode=pad_mode)
-            filtered = torch.nn.functional.conv2d(filtered, kernel, groups=self.channels)
-            base = torch.nn.functional.interpolate(
-                filtered, scale_factor=2, mode='bilinear', align_corners=False)
-
-        if self.mode == 'aa_only':
-            return base
-
-        gate = torch.sigmoid(self.content_gate(base))
-        residual = self.residual_dw(base)
-        scale = torch.clamp(self.residual_scale, min=0.0, max=1.0)
-        return base + scale * gate * residual
-
-    def init_weights(self, scheme=''):
-        named_apply(partial(_init_weights, scheme=scheme), self)
-
-
 class EUCB(nn.Module):
     # C_in 是当前深层特征通道，C_out 要与下一层 skip 的通道一致。
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation='relu',
-                 caa_mode='off', caa_residual_scale=0.1):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, activation='relu'):
         # 构造期只记录通道并建立两个子序列；scale_factor=2 是写死的，所以每个 EUCB 恢复一级分辨率。
         # 初始化基础模块。
         super(EUCB, self).__init__()
@@ -612,27 +553,13 @@ class EUCB(nn.Module):
         # 保存输出通道数。
         self.out_channels = out_channels
         # 上采样和深度卷积组合；空间尺寸先乘 2，通道暂时保持 C_in。
-        self.caa_mode = str(caa_mode)
-        if self.caa_mode == 'off':
-            self.up_dwc = nn.Sequential(
-                # 保持基线最近邻上采样及其后续 depth-wise conv/BN/激活结构不变。
-                nn.Upsample(scale_factor=2),
-                nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size, stride=stride,
-                          padding=kernel_size // 2, groups=self.in_channels, bias=False),
-                nn.BatchNorm2d(self.in_channels),
-                act_layer(activation, inplace=True)
-            )
-        else:
-            self.up_dwc = nn.Sequential(
-                ContentAwareAntiAliasUpsample(
-                    self.in_channels, mode=self.caa_mode,
-                    residual_scale=caa_residual_scale),
-                nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size,
-                          stride=stride, padding=kernel_size // 2,
-                          groups=self.in_channels, bias=False),
-                nn.BatchNorm2d(self.in_channels),
-                act_layer(activation, inplace=True),
-            )
+        self.up_dwc = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size,
+                      stride=stride, padding=kernel_size // 2, groups=self.in_channels, bias=False),
+            nn.BatchNorm2d(self.in_channels),
+            act_layer(activation, inplace=True),
+        )
         # point-wise convolution 负责从 C_in 投影到下一解码级的 C_out。
         self.pwc = nn.Sequential(
             # 这里只有一个卷积，理论上可以不用 Sequential；保留容器形式便于未来追加 BN/激活而不改 forward。
@@ -943,10 +870,56 @@ class SAB(nn.Module):
 #   EUCB 的核固定为 3、激活固定采用其默认 ReLU；CAB/LGAG 的激活也使用各类默认 ReLU；
 #   num_classes、encoder、pretrain 都不属于 EMCAD，由 lib/networks.py 管理。
 # ==================================================================================================
+class SkipSpatialAlignment(nn.Module):
+    """Predict bounded pixel offsets and warp skip features into decoder coordinates."""
+    def __init__(self, channels, max_offset=2.0):
+        super().__init__()
+        hidden = max(16, channels // 4)
+        self.offset = nn.Sequential(
+            nn.Conv2d(channels * 2, hidden, 3, padding=1, groups=1, bias=False),
+            nn.BatchNorm2d(hidden), nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, 2, 3, padding=1))
+        nn.init.zeros_(self.offset[-1].weight)
+        nn.init.zeros_(self.offset[-1].bias)
+        self.max_offset = max_offset
+
+    @staticmethod
+    def warp(feature, flow):
+        b, _, h, w = feature.shape
+        ys = (torch.arange(h, device=feature.device, dtype=torch.float32) + .5) * (2.0 / h) - 1.0
+        xs = (torch.arange(w, device=feature.device, dtype=torch.float32) + .5) * (2.0 / w) - 1.0
+        yy, xx = torch.meshgrid(ys, xs, indexing='ij')
+        grid = torch.stack((xx, yy), dim=-1).unsqueeze(0)
+        delta = torch.stack((flow[:, 0] * (2.0 / w), flow[:, 1] * (2.0 / h)), dim=-1)
+        return torch.nn.functional.grid_sample(feature.float(), grid + delta.float(),
+                                                mode='bilinear', padding_mode='border',
+                                                align_corners=False).to(feature.dtype)
+
+    def forward(self, decoder, skip):
+        if decoder.shape != skip.shape:
+            raise ValueError('Skip alignment expects decoder and skip with equal B,C,H,W')
+        flow = self.max_offset * torch.tanh(self.offset(torch.cat((decoder, skip), dim=1)))
+        aligned_skip = self.warp(skip, flow)
+        reverse_decoder = self.warp(decoder, -flow)
+        return aligned_skip, reverse_decoder, flow
+
+
+def bidirectional_feature_consistency(decoder, aligned_skip, raw_skip, reverse_decoder):
+    """Two stop-gradient directions; normalization prevents scale from dominating."""
+    fn = torch.nn.functional.normalize
+    d = fn(decoder.float(), dim=1)
+    a = fn(aligned_skip.float(), dim=1)
+    s = fn(raw_skip.float(), dim=1)
+    r = fn(reverse_decoder.float(), dim=1)
+    return .5 * ((d - a.detach()).square().sum(dim=1).mean() +
+                 (s - r.detach()).square().sum(dim=1).mean())
+
+
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1):
+                 add=True, lgag_ks=3, activation='relu6', use_skip_alignment=False,
+                 use_bidirectional_consistency=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -965,8 +938,7 @@ class EMCAD(nn.Module):
         # 第三级上采样：channels[0] -> channels[1]，空间尺寸乘 2。
         # 名称 eucb3 表示它的输出属于 d3，不是“第 3 个被执行的 EUCB”。
         self.eucb3 = EUCB(in_channels=channels[0], out_channels=channels[1], kernel_size=eucb_ks,
-                          stride=eucb_ks // 2, caa_mode=caa_mode,
-                          caa_residual_scale=caa_residual_scale)
+                          stride=eucb_ks // 2)
         # 用上采样 d3 门控同尺度 x3；内部通道为 channels[1]/2，默认采用大核分组卷积。
         self.lgag3 = LGAG(F_g=channels[1], F_l=channels[1], F_int=channels[1] // 2, kernel_size=lgag_ks,
                           groups=channels[1] // 2)
@@ -979,8 +951,7 @@ class EMCAD(nn.Module):
         # 第二级上采样：channels[1] -> channels[2]，空间尺寸再乘 2。
         # eucb2 输出通道与 x2/skip[1] 完全一致，才能让 LGAG 两路投影和后续逐元素加法成立。
         self.eucb2 = EUCB(in_channels=channels[1], out_channels=channels[2], kernel_size=eucb_ks,
-                          stride=eucb_ks // 2, caa_mode=caa_mode,
-                          caa_residual_scale=caa_residual_scale)
+                          stride=eucb_ks // 2)
         # 门控编码器第二级 skip x2。
         self.lgag2 = LGAG(F_g=channels[2], F_l=channels[2], F_int=channels[2] // 2, kernel_size=lgag_ks,
                           groups=channels[2] // 2)
@@ -992,8 +963,7 @@ class EMCAD(nn.Module):
         # 第一级上采样：channels[2] -> channels[3]，到达编码器最高分辨率特征层。
         # “第一级”仍只到 encoder stage1 的 1/4 尺度；解码器内部没有继续到 1/2 或原图尺度。
         self.eucb1 = EUCB(in_channels=channels[2], out_channels=channels[3], kernel_size=eucb_ks,
-                          stride=eucb_ks // 2, caa_mode=caa_mode,
-                          caa_residual_scale=caa_residual_scale)
+                          stride=eucb_ks // 2)
         # 门控最浅层 skip x1；int(...) 与 //2 在正整数通道下结果相同。
         self.lgag1 = LGAG(F_g=channels[3], F_l=channels[3], F_int=int(channels[3] / 2), kernel_size=lgag_ks,
                           groups=int(channels[3] / 2))
@@ -1001,6 +971,11 @@ class EMCAD(nn.Module):
         self.mscb1 = MSCBLayer(channels[3], channels[3], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
                                activation=activation)
+
+        self.use_skip_alignment = bool(use_skip_alignment)
+        self.use_bidirectional_consistency = bool(use_bidirectional_consistency)
+        self.skip_aligners = (nn.ModuleList([SkipSpatialAlignment(c) for c in channels[1:]])
+                              if self.use_skip_alignment else None)
 
         # 四个解码级分别拥有独立 CAB；权重通道与本级特征一致。
         # CAB4/3/2/1 的参数不能共享，因为它们的通道数通常分别为 C4/C3/C2/C1，卷积 shape 不同。
@@ -1017,10 +992,11 @@ class EMCAD(nn.Module):
         self.sab = SAB()
 
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
-    def forward(self, x, skips):
+    def forward(self, x, skips, return_consistency=False):
         # 本方法没有显式检查 len(skips)、通道或尺寸。若顺序误传为 [x1,x2,x3]，通常会在 LGAG 卷积
         # 因通道不符而报错；若相邻空间尺寸不是严格 2 倍，也会在 g1+x1 或 d+x 时报 shape mismatch。
         # skips 中的张量不会被原地修改；x1/x2/x3 变量接收的是 LGAG 返回的新乘法结果。
+        consistency_terms = []
         # MSCAM4
         # 代码没有单独 MSCAM 类；CAB 权重乘回 x 是论文式(7)的完整通道注意力。
         # self.cab4(x) 的形状为 (B,C4,1,1)，PyTorch 广播到 H4xW4 后逐元素乘 x，d4 shape 不变。
@@ -1040,7 +1016,15 @@ class EMCAD(nn.Module):
         # LGAG3
         # skips[0] 是编码器 x3；LGAG 输出被门控的 x3，通道和分辨率不变。
         # 关键点：LGAG(g=d3,x=skip) 用 d3 决定保留 skip 的哪些空间位置，但返回值内容来源仍是 skip。
-        x3 = self.lgag3(g=d3, x=skips[0])
+        raw_skip3 = skips[0]
+        if self.use_skip_alignment:
+            aligned_skip3, reverse_decoder3, flow3 = self.skip_aligners[0](d3, raw_skip3)
+        else:
+            aligned_skip3, reverse_decoder3, flow3 = raw_skip3, d3, None
+        if return_consistency and self.use_bidirectional_consistency:
+            consistency_terms.append(bidirectional_feature_consistency(
+                d3, aligned_skip3, raw_skip3, reverse_decoder3))
+        x3 = self.lgag3(g=d3, x=aligned_skip3)
 
         # Additive aggregation 3
         # 解码特征与筛选后的 skip 逐元素相加，不采用通道拼接，因此 d3 仍为 C3。
@@ -1064,7 +1048,15 @@ class EMCAD(nn.Module):
         # LGAG2
         # 门控编码器 x2，输出保持 skips[1] 的 C2 通道。
         # x2 变量名在本函数内表示“门控后的第二级 skip”，不是编码器原始 x2 的原地改写。
-        x2 = self.lgag2(g=d2, x=skips[1])
+        raw_skip2 = skips[1]
+        if self.use_skip_alignment:
+            aligned_skip2, reverse_decoder2, flow2 = self.skip_aligners[1](d2, raw_skip2)
+        else:
+            aligned_skip2, reverse_decoder2, flow2 = raw_skip2, d2, None
+        if return_consistency and self.use_bidirectional_consistency:
+            consistency_terms.append(bidirectional_feature_consistency(
+                d2, aligned_skip2, raw_skip2, reverse_decoder2))
+        x2 = self.lgag2(g=d2, x=aligned_skip2)
 
         # Additive aggregation 2
         # 与门控 skip 相加，形状保持 (B,C2,H/8,W/8)。
@@ -1087,7 +1079,15 @@ class EMCAD(nn.Module):
         # LGAG1
         # 门控最高分辨率编码器特征 x1。
         # x1 往往包含最丰富的边界/纹理，也最容易带入背景噪声，因此仍需 LGAG 选择后再融合。
-        x1 = self.lgag1(g=d1, x=skips[2])
+        raw_skip1 = skips[2]
+        if self.use_skip_alignment:
+            aligned_skip1, reverse_decoder1, flow1 = self.skip_aligners[2](d1, raw_skip1)
+        else:
+            aligned_skip1, reverse_decoder1, flow1 = raw_skip1, d1, None
+        if return_consistency and self.use_bidirectional_consistency:
+            consistency_terms.append(bidirectional_feature_consistency(
+                d1, aligned_skip1, raw_skip1, reverse_decoder1))
+        x1 = self.lgag1(g=d1, x=aligned_skip1)
 
         # Additive aggregation 1
         # 相加后 d1 保持 (B,C1,H/4,W/4)。
@@ -1105,4 +1105,9 @@ class EMCAD(nn.Module):
         # 返回顺序固定为从深到浅 [d4,d3,d2,d1]；网络封装器据此连接四个分割头。
         # 返回 list 而不是只返回 d1，是为了支持 deep supervision/mutation 等多输出训练策略；
         # 在项目测试路径中，最终主预测通常取上层返回列表的最后一个 p1，而不是直接使用这里的 d1。
-        return [d4, d3, d2, d1]
+        features = [d4, d3, d2, d1]
+        if return_consistency:
+            aux = (torch.stack(consistency_terms).mean() if consistency_terms
+                   else d1.new_zeros(()))
+            return features, aux
+        return features
