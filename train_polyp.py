@@ -34,7 +34,6 @@ from tqdm import tqdm
 from utils.dataloader_polyp import get_loader
 # 二分类模型、损失、评测、检查点和设备辅助函数。
 from utils.polyp_utils import (
-    # 二分类像素级可靠性融合的融合/校准辅助损失。
     # 构建 EMCADNet。
     build_model,
     # 在验证/测试加载器上统计 Dice/IoU 等。

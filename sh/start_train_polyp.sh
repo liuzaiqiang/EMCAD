@@ -85,59 +85,12 @@ SUPERVISION="${SUPERVISION:-paper}"
 #####################################################################
 
 
-# 独立消融开关；关闭时分别映射到 p1 与 EUCB 原始上采样路径。
-#像素级可靠性多头融合的总开关。 1：允许使用像素可靠性融合  0：关闭该创新点，强制回到 p1 输出
-USE_PIXEL_RELIABILITY_FUSION="${USE_PIXEL_RELIABILITY_FUSION:-1}"
-#它决定四个 EMCAD 输出如何融合。当前代码支持四种模式：
-#p1:只使用 p1，即 outputs[-1] 这是原始单输出推理方式，也是关闭像素可靠性融合时的模式。
-# fixed_sum  outputs[0] + outputs[1] + outputs[2] + outputs[3]  四个输出直接相加，权重固定为 1。
-#global_scalar   为四个输出学习四个全局标量权重： softmax(w1, w2, w3, w4) 每个输出在整张图上使用同一个权重。
-#pixel_reliability  为每个像素、每个输出预测可靠性： 每个像素位置分别计算四个输出的权重  也就是说，模型不是简单平均四个输出，而是针对每个像素决定更信任哪个预测头。
 USE_SKIP_ALIGNMENT="${USE_SKIP_ALIGNMENT:-1}"
 USE_BIDIRECTIONAL_CONSISTENCY="${USE_BIDIRECTIONAL_CONSISTENCY:-1}"
 CONSISTENCY_WEIGHT="${CONSISTENCY_WEIGHT:-0.05}"
 for flag in "${USE_SKIP_ALIGNMENT}" "${USE_BIDIRECTIONAL_CONSISTENCY}"; do
   [[ "${flag}" == "0" || "${flag}" == "1" ]] || { echo "[ERROR] alignment switches must be 0 or 1" >&2; exit 2; }
 done
-FUSION_MODE="${FUSION_MODE:-pixel_reliability}"
-
-
-
-#这是可靠性预测头校准损失的权重。 它只影响 pixel_reliability 模式中的可靠性监督部分，不影响原始 EMCAD 主损失。
-#当前逻辑可以简化为：
-# fusion_auxiliary_loss =
-#     0.3 × fused_BCE
-#   + 0.7 × fused_Dice
-#   + RELIABILITY_LOSS_WEIGHT × reliability_BCE
-
-#RELIABILITY_LOSS_WEIGHT=1  表示按当前默认强度加入可靠性校准损失。
-# 注意它只有在以下条件同时满足时才有效：
-# FUSION_MODE=pixel_reliability
-# FUSION_LOSS_WEIGHT>0
-RELIABILITY_LOSS_WEIGHT="${RELIABILITY_LOSS_WEIGHT:-1}"
-
-#####################################################################
-
-
-
-
-
-
-
-
-#融合辅助损失的总权重。
-# 0	不计算融合辅助损失
-# 1	按原始比例加入融合辅助损失
-# 0.5	融合辅助损失影响减半
-# 2	融合辅助损失影响加倍
-FUSION_LOSS_WEIGHT="${FUSION_LOSS_WEIGHT:-1}"
-
-
-
-
-
-
-
 #这是多尺度训练总开关。
 USE_MULTI_SCALE_TRAINING="${USE_MULTI_SCALE_TRAINING:-1}"
 
@@ -148,11 +101,6 @@ USE_MULTI_SCALE_TRAINING="${USE_MULTI_SCALE_TRAINING:-1}"
 INPUT_CHANNELS="${INPUT_CHANNELS:-3}"
 MERGE_INSTANCE_MASKS="${MERGE_INSTANCE_MASKS:-0}"
 
-case "${USE_PIXEL_RELIABILITY_FUSION}" in
-  0) FUSION_MODE="p1"; FUSION_LOSS_WEIGHT="0" ;;
-  1) ;;
-  *) echo "[ERROR] USE_PIXEL_RELIABILITY_FUSION must be 0 or 1"; exit 1 ;;
-esac
 case "${USE_MULTI_SCALE_TRAINING}" in
   0|1) ;;
   *) echo "[ERROR] USE_MULTI_SCALE_TRAINING must be 0 or 1"; exit 1 ;;
@@ -223,7 +171,7 @@ LOG_FILE="${LOG_DIR}/train_${DATASET}_${DATASET_NAME}__imgSize${IMG_SIZE}_batchS
 RUN_ID="train_${DATASET}_${DATASET_NAME}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
-PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS USE_SKIP_ALIGNMENT USE_BIDIRECTIONAL_CONSISTENCY CONSISTENCY_WEIGHT RUN_ID)
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY NUM_WORKERS SEED USE_MULTI_SCALE_TRAINING INPUT_CHANNELS MERGE_INSTANCE_MASKS USE_SKIP_ALIGNMENT USE_BIDIRECTIONAL_CONSISTENCY CONSISTENCY_WEIGHT RUN_ID)
 
 # 参数快照追加到日志；终端只保留便于复制的RUN_ID和后续PID/路径信息。
 {
