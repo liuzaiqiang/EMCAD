@@ -80,7 +80,7 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 } | tee -a "${LOG_FILE}"
 
 # 整个续行块是一条后台命令；nohup抵抗终端断开，env把RUN_ID写入子进程环境供停止脚本核验。
-# 模型结构、融合/CAA选项和输入尺寸均由 test_acdc.py 从 CONFIG_FILE 自动恢复，启动器不再重复填写。
+# 模型结构、融合选项和输入尺寸均由 test_acdc.py 从 CONFIG_FILE 自动恢复，启动器不再重复填写。
 # --save_nii和--save_npz分别请求保存医学影像格式预测与数组结果；输出追加日志、错误合并、输入断开并转入后台。
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_acdc.py \
   --checkpoint "${CKPT}" \
