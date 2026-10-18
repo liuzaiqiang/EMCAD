@@ -70,4 +70,7 @@ export N_GPU="${N_GPU:-1}"
 # 底层通用启动器沿用论文默认200轮、batch 16、AdamW学习率和权重衰减1e-4；
 # 项目根固定后 source 它，使本脚本、通用启动器和队列共享相同训练 PID 与停止标识。
 cd "${PROJECT_DIR}"
+# DSB18/EM 与通用二分类入口使用同名开关；这里也显式给出默认值。
+USE_FULL_RESOLUTION_DETAIL_BRANCH="${USE_FULL_RESOLUTION_DETAIL_BRANCH:-0}" # 原图全分辨率细节支路：0关，1开
+USE_SEMANTIC_GATED_RESIDUAL="${USE_SEMANTIC_GATED_RESIDUAL:-0}"         # d1语义门控残差：0关，1开
 source "${SCRIPT_DIR}/start_train_polyp.sh"

@@ -21,6 +21,10 @@ conda activate "${CONDA_ENV_PREFIX}"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "${PROJECT_DIR}"
+USE_FULL_RESOLUTION_DETAIL_BRANCH="${USE_FULL_RESOLUTION_DETAIL_BRANCH:-0}" # 原图全分辨率细节支路：0关，1开
+USE_SEMANTIC_GATED_RESIDUAL="${USE_SEMANTIC_GATED_RESIDUAL:-0}"         # d1语义门控残差：0关，1开
+source "${PROJECT_DIR}/sh/detail_module_flags.sh"
+test -f "${PROJECT_DIR}/train_acdc.py" || { echo "[ERROR] train_acdc.py missing" >&2; exit 2; }
 
 
 # 所有后台输出集中写入项目 logs 目录。
@@ -70,8 +74,8 @@ test -f "${PROJECT_DIR}/pretrained_pth/pvt/pvt_v2_b2.pth" || {
 TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 # 日志名记录关键训练规模，RUN_ID额外记录GPU和随机种子。
-LOG_FILE="${LOG_DIR}/train_${DATASET}_imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr_${BASE_LR}_max_epochs_${MAX_EPOCHS}_${TS}.log"
-RUN_ID="train_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${RAND}"
+LOG_FILE="${LOG_DIR}/train_${DETAIL_VARIANT}_${DATASET}_imgSize_${IMG_SIZE}_batchSize_${BATCH_SIZE}_lr_${BASE_LR}_max_epochs_${MAX_EPOCHS}_${TS}_${RAND}.log"
+RUN_ID="train_${DETAIL_VARIANT}_${DATASET}_${TS}_gpu_${CUDA_VISIBLE_DEVICES}_SEED_${SEED}_RAND_${RAND}"
 # 脚本已cd到项目根，因此相对PID文件位于项目根目录。
 PID_FILE="${RUN_ID}.pid"
 
@@ -91,7 +95,7 @@ esac
 
 
 # tee -a把配置写入日志；RUN_ID同时打印到终端，供stop_train_acdc.sh作为参数使用。
-PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES SEED IMG_SIZE BATCH_SIZE MAX_EPOCHS DATASET BASE_LR SUPERVISION NUM_WORKERS N_GPU DETERMINISTIC LIST_DIR ROOT_PATH OUTPUT_DIR USE_PIXEL_RELIABILITY_FUSION FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT TS RAND LOG_FILE RUN_ID PID_FILE)
+PARAM_NAMES=(CONDA_BASE CONDA_ENV_PREFIX PROJECT_DIR LOG_DIR CUDA_VISIBLE_DEVICES SEED IMG_SIZE BATCH_SIZE MAX_EPOCHS DATASET BASE_LR SUPERVISION NUM_WORKERS N_GPU DETERMINISTIC LIST_DIR ROOT_PATH OUTPUT_DIR USE_PIXEL_RELIABILITY_FUSION FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT USE_FULL_RESOLUTION_DETAIL_BRANCH USE_SEMANTIC_GATED_RESIDUAL DETAIL_VARIANT TS RAND LOG_FILE RUN_ID PID_FILE)
 echo "[INFO] RUN_ID=${RUN_ID}"
 
 {
@@ -115,6 +119,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --lgag_ks 3 \
   --activation_mscb relu6 \
   --supervision "${SUPERVISION}" \
+  "${DETAIL_MODULE_ARGS[@]}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
   --max_epochs "${MAX_EPOCHS}" \
@@ -125,10 +130,11 @@ nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --seed "${SEED}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
-# 保存刚启动后台任务的PID；脚本本身成功结束不代表训练完成，只表示启动和PID记录成功。
+# 保存进程 PID；默认 wait 转发真实训练退出码。
 PID=$!
 echo "[INFO] PID=${PID}"
 echo "${PID}" > "${PID_FILE}"
 # 输出PID文件和日志位置，方便监控及后续停止。
 echo "[INFO] PID_FILE=${PID_FILE}"
 echo "[INFO] LOG_FILE=${LOG_FILE}"
+finish_detail_training "${PID}"

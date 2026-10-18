@@ -9,6 +9,10 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
 cd "${PROJECT_DIR}"
+USE_FULL_RESOLUTION_DETAIL_BRANCH="${USE_FULL_RESOLUTION_DETAIL_BRANCH:-0}" # 原图全分辨率细节支路：0关，1开
+USE_SEMANTIC_GATED_RESIDUAL="${USE_SEMANTIC_GATED_RESIDUAL:-0}"         # d1语义门控残差：0关，1开
+source "${PROJECT_DIR}/sh/detail_module_flags.sh"
+test -f "${PROJECT_DIR}/train_isic.py" || { echo "[ERROR] train_isic.py missing" >&2; exit 2; }
 
 # 训练stdout/stderr统一写入项目logs目录。
 LOG_DIR="${PROJECT_DIR}/logs"
@@ -139,12 +143,12 @@ TS="$(date +%F_%H%M%S)"
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 
 # 日志、PID文件和训练输出通过同一RUN_ID关联；PID文件明确放在项目根目录。
-LOG_FILE="${LOG_DIR}/train_${DATASET}_${DATASET_NAME}__imgSize${IMG_SIZE}_batchSize${BATCH_SIZE}_lr${BASE_LR}_epo${MAX_EPOCHS}_${TS}.log"
-RUN_ID="train_${DATASET}_${DATASET_NAME}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
+LOG_FILE="${LOG_DIR}/train_${DETAIL_VARIANT}_${DATASET}_${DATASET_NAME}__imgSize${IMG_SIZE}_batchSize${BATCH_SIZE}_lr${BASE_LR}_epo${MAX_EPOCHS}_${TS}_${RAND}.log"
+RUN_ID="train_${DETAIL_VARIANT}_${DATASET}_${DATASET_NAME}_${TS}_gpu${CUDA_VISIBLE_DEVICES}_SEED${SEED}_RAND${RAND}"
 PID_FILE="${PROJECT_DIR}/${RUN_ID}.pid"
 
 # 把关键配置追加进日志，终端单独打印RUN_ID供停止脚本使用。
-PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY SUPERVISION NUM_WORKERS SEED DETERMINISTIC FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT RUN_ID)
+PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE VAL_BATCH_SIZE MAX_EPOCHS BASE_LR WEIGHT_DECAY SUPERVISION NUM_WORKERS SEED DETERMINISTIC FUSION_MODE FUSION_LOSS_WEIGHT RELIABILITY_LOSS_WEIGHT USE_FULL_RESOLUTION_DETAIL_BRANCH USE_SEMANTIC_GATED_RESIDUAL DETAIL_VARIANT RUN_ID)
 {
   echo "[INFO] parameters:"
   for name in "${PARAM_NAMES[@]}"; do printf '[INFO] %-24s=%s\n' "$name" "${!name}"; done
@@ -178,6 +182,7 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_isic.py \
   --lgag_ks "${LGAG_KS}" \
   --activation_mscb "${ACTIVATION_MSCB}" \
   --supervision "${SUPERVISION}" \
+  "${DETAIL_MODULE_ARGS[@]}" \
   --pretrained_dir "${PRETRAINED_DIR}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
@@ -201,7 +206,7 @@ nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_isic.py \
   --device "${DEVICE}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
-# 记录后台PID并报告日志、PID文件和输出目录；启动脚本退出码0仅表示任务已成功放入后台。
+# 记录 PID；默认等待并转发训练进程的退出码。
 PID=$!
 
 echo "[INFO] PID=${PID}"
@@ -209,3 +214,4 @@ echo "${PID}" > "${PID_FILE}"
 echo "[INFO] PID_FILE=${PID_FILE}"
 echo "[INFO] LOG_FILE=${LOG_FILE}"
 echo "[INFO] RUN_OUTPUT=${OUTPUT_DIR}/${DATASET_NAME}/${RUN_ID}"
+finish_detail_training "${PID}"

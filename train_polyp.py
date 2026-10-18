@@ -172,6 +172,8 @@ def parse_args():
         # 默认目录。
         default="./pretrained_pth/pvt/",
     )
+    parser.add_argument("--use_full_resolution_detail_branch", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_semantic_gated_residual", type=int, choices=[0, 1], default=0)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -858,7 +860,7 @@ def main():
     # Polyp、BUSI 和 ISIC 共用此入口；复杂度统计只观察已构建模型一次。
     log_model_complexity(
         model,
-        (1, 3, args.img_size, args.img_size),
+        (1, 1 if args.grayscale else 3, args.img_size, args.img_size),
         output_path=os.path.join(run_dir, "model_complexity.txt"),
     )
 

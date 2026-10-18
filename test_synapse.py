@@ -41,7 +41,7 @@ from utils.dataset_synapse import Synapse_dataset
 from utils.utils import test_single_volume
 
 # EMCADNet 必须用与训练 checkpoint 一致的结构参数重新实例化。
-from lib.networks import EMCADNet
+from lib.research_model import build_research_model
 
 # 创建命令行解析器。
 parser = argparse.ArgumentParser()
@@ -99,6 +99,8 @@ parser.add_argument('--checkpoint', type=str, default='',
 # 当显式传入训练配置文件时，按其中记录的模型参数创建网络，避免测试结构与 checkpoint 不匹配。
 parser.add_argument('--train_config', type=str, default='',
                     help='training config.json next to the checkpoint; model settings are loaded from it')
+parser.add_argument('--use_full_resolution_detail_branch', type=int, choices=[0, 1], default=0)
+parser.add_argument('--use_semantic_gated_residual', type=int, choices=[0, 1], default=0)
 
 # max_iterations 在这里不控制任何循环，只参与复刻训练目录名。
 parser.add_argument('--max_iterations', type=int, default=30000, help='maximum epoch number to train')
@@ -136,10 +138,18 @@ if args.train_config:
     config_keys_to_restore = (
         'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
         'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
-        'pretrained_dir', 'supervision',
+        'pretrained_dir', 'supervision', 'use_full_resolution_detail_branch', 'use_semantic_gated_residual',
         'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
     )
     for config_key in config_keys_to_restore:
+        if config_key in ('use_full_resolution_detail_branch', 'use_semantic_gated_residual'):
+            saved = int(training_config.get(config_key, 0))
+            option = '--' + config_key
+            explicit = any(item == option or item.startswith(option + '=') for item in sys.argv[1:])
+            if explicit and getattr(args, config_key) != saved:
+                raise RuntimeError('{} conflicts with checkpoint config'.format(option))
+            setattr(args, config_key, saved)
+            continue
         if config_key in training_config:
             setattr(args, config_key, training_config[config_key])
     print('[INFO] Restored model/test settings from training config:', args.train_config)
@@ -359,7 +369,8 @@ if __name__ == "__main__":
 
 
     # 按与 checkpoint 一致的结构构造空模型；num_classes=9 决定四个分割头通道数。
-    model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
+    model = build_research_model(use_full_resolution_detail_branch=args.use_full_resolution_detail_branch, use_semantic_gated_residual=args.use_semantic_gated_residual,
+                     num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)

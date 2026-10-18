@@ -224,7 +224,7 @@ class EMCADNet(nn.Module):
     # 调用 model.eval()、torch.no_grad() 以及选择最终预测头，仍由测试脚本负责。
     # -------------------------------------------------------------------------
     # 输入 x 约定为 (B,C,H,W)；mode 当前不改变返回值，训练策略由外部 trainer 决定。
-    def forward(self, x, mode='test'):
+    def forward(self, x, mode='test', return_decoder_feature=False):
         # 只在 C=1 时使用可学习适配器；已经是 RGB/C=3 时直接送入编码器。
         if x.size()[1] == 1:
             # (B,1,H,W) -> (B,3,H,W)，空间尺寸保持不变。
@@ -267,6 +267,8 @@ class EMCADNet(nn.Module):
         p1 = F.interpolate(p1, scale_factor=4, mode='bilinear')
 
         # 论文第5页 Sec.3.3 把最后解码阶段称为 p4；本代码按反方向编号，外部推理实际取返回列表 P[-1]，即这里的 p1。
+        if return_decoder_feature:
+            return [p4, p3, p2, p1], dec_outs[3]
         if mode == 'test':
             # return 返回的是列表本身，不会复制四个张量；张量仍保留其 autograd 关系，除非外层使用 no_grad 或 detach。
             # 测试模式仍返回全部四个 logits，不在模型内部执行 sigmoid、softmax 或多头求和。

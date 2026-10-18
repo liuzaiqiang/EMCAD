@@ -19,7 +19,7 @@ from medpy import metric
 from tqdm import tqdm
 
 # EMCADNet 是编码器、EMCAD 解码器和四个分割头的总封装。
-from lib.networks import EMCADNet
+from lib.research_model import build_research_model
 
 # 这些名称决定逐病例结果、均值和标准差中需要统一汇总的核心指标列。
 # 前景像素数和表面距离是否有定义属于诊断字段，因此在写 CSV 时另外追加。
@@ -78,7 +78,9 @@ def resolve_device(requested):
 # num_classes=1 表示每个像素只输出一个“前景”logit；背景概率隐式等于 1-sigmoid(logit)，
 # 因而二分类任务不需要额外建立一个背景输出通道。
 def build_model(args, pretrain):
-    return EMCADNet(
+    return build_research_model(
+        use_full_resolution_detail_branch=args.use_full_resolution_detail_branch,
+        use_semantic_gated_residual=args.use_semantic_gated_residual,
         # 二分类分割头的输出形状为 [B,1,H,W]。
         num_classes=1,
         # MSDC 多尺度深度卷积核；论文主文 PDF 第6页/印刷第6页 §4.1 使用 [1,3,5]。

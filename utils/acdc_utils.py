@@ -17,7 +17,7 @@ import torch.nn.functional as F
 from medpy import metric
 
 # 复用项目统一的编码器 + EMCAD 解码器封装。
-from lib.networks import EMCADNet
+from lib.research_model import build_research_model
 
 # ACDC 的网络输出共四类：背景、右心室、心肌、左心室。
 ACDC_NUM_CLASSES = 4
@@ -46,7 +46,9 @@ def seed_everything(seed, deterministic=True):
 # 根据命令行参数构造 ACDC 四分类 EMCADNet。
 def build_model(args, pretrain):
     # 直接返回统一模型实例；本函数只集中参数映射，不改变网络结构。
-    return EMCADNet(
+    return build_research_model(
+        use_full_resolution_detail_branch=args.use_full_resolution_detail_branch,
+        use_semantic_gated_residual=args.use_semantic_gated_residual,
         # ACDC 固定输出 4 个互斥类别 logits。
         num_classes=ACDC_NUM_CLASSES,
         # MSDC 各深度卷积分支的卷积核尺寸。

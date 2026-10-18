@@ -17,6 +17,18 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 
 cd "${PROJECT_DIR}"
+
+# ===== 研究模块开关：直接把下面默认值 0 改为 1，或在启动命令前传入同名环境变量 =====
+# USE_FULL_RESOLUTION_DETAIL_BRANCH：全分辨率细节支路。1=从原图学习细节残差并修正最终 p1 logits；0=关闭。
+USE_FULL_RESOLUTION_DETAIL_BRANCH="${USE_FULL_RESOLUTION_DETAIL_BRANCH:-0}"
+# USE_SEMANTIC_GATED_RESIDUAL：语义门控残差。1=用 d1 语义门控制原图局部高频残差；0=关闭。
+USE_SEMANTIC_GATED_RESIDUAL="${USE_SEMANTIC_GATED_RESIDUAL:-0}"
+# 两个值依次为 0/0：原始 EMCAD；1/0：仅全分辨率细节支路；
+# 0/1：仅语义门控残差；1/1：两者都启用。
+# 例如：USE_FULL_RESOLUTION_DETAIL_BRANCH=1 USE_SEMANTIC_GATED_RESIDUAL=0 bash sh/start_train_synapse.sh
+# 下方共用文件只校验 0/1、生成实验标识，并把值传给 Python。
+source "${PROJECT_DIR}/sh/detail_module_flags.sh"
+test -f "${PROJECT_DIR}/train_synapse.py" || { echo "[ERROR] train_synapse.py missing" >&2; exit 2; }
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${LOG_DIR}"
 
@@ -28,7 +40,7 @@ N_GPU="${N_GPU:-1}"
 NUM_WORKERS=8
 
 SEED="${SEED:-2222}"
-MAX_EPOCHS=400
+MAX_EPOCHS=300
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
@@ -87,7 +99,7 @@ esac
 
 RAND="$(head -c 6 /dev/urandom | od -An -tx1 | tr -d ' \n')"
 TS="$(date +%F_%H%M%S)"
-LOG_FILE="${LOG_DIR}/train_${DATASET}_encoder_${ENCODER}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}.log"
+LOG_FILE="${LOG_DIR}/train_${DETAIL_VARIANT}_${DATASET}_encoder_${ENCODER}_imgSize_${IMG_SIZE}_supervision_${SUPERVISION}_bs_${BATCH_SIZE}_seed_${SEED}_lr_${BASE_LR}_maxepo_${MAX_EPOCHS}_ts_${TS}_RAND_${RAND}.log"
 RUN_ID="$(basename "${LOG_FILE}" .log)"
 PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
@@ -121,6 +133,9 @@ PARAM_NAMES=(
   RUN_ID
   PID_FILE
   NUM_WORKERS
+  USE_FULL_RESOLUTION_DETAIL_BRANCH
+  USE_SEMANTIC_GATED_RESIDUAL
+  DETAIL_VARIANT
 )
 
 {
@@ -150,6 +165,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --activation_mscb "${ACTIVATION_MSCB}" \
   "${ARCH_FLAGS[@]}" \
   --supervision "${SUPERVISION}" \
+  "${DETAIL_MODULE_ARGS[@]}" \
   --num_workers "${NUM_WORKERS}" \
   --n_gpu "${N_GPU}" \
   --deterministic "${DETERMINISTIC}" \
@@ -160,3 +176,4 @@ PID=$!
 echo "[INFO] PID=${PID}"
 #PID 文件在项目根目录
 echo "${PID}" > "${PID_FILE}"
+finish_detail_training "${PID}"

@@ -93,6 +93,8 @@ def parse_args():
     parser.add_argument("--concatenation", action="store_true")
     # 预训练目录仍是 build_model 所需属性，但测试构造时 pretrain=False，不会加载它。
     parser.add_argument("--pretrained_dir", default="./pretrained_pth/pvt/")
+    parser.add_argument("--use_full_resolution_detail_branch", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_semantic_gated_residual", type=int, choices=[0, 1], default=0)
 
     # 每张切片进入模型前缩放到的正方形尺寸，须与训练设置相符。
     parser.add_argument("--img_size", type=int, default=256)
@@ -134,10 +136,14 @@ def restore_checkpoint_config(args):
         "activation_mscb": "--activation_mscb",
         "no_dw_parallel": "--no_dw_parallel",
         "concatenation": "--concatenation",
+        "use_full_resolution_detail_branch": "--use_full_resolution_detail_branch",
+        "use_semantic_gated_residual": "--use_semantic_gated_residual",
         "img_size": "--img_size",
     }
     for field, option in options.items():
         if field not in config:
+            if field in ("use_full_resolution_detail_branch", "use_semantic_gated_residual") and getattr(args, field) != 0:
+                raise RuntimeError("{} is absent from checkpoint config; expected 0".format(option))
             continue
         requested = getattr(args, field)
         configured = config[field]
