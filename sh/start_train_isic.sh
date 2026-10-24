@@ -49,6 +49,13 @@ MIN_LR="${MIN_LR:-1e-6}"
 NUM_WORKERS="${NUM_WORKERS:-0}"
 DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
+# 研究模块统一在此设置；日志和 nohup 共用此值。
+USE_CLASS_PROTOTYPE_QUERY="${USE_CLASS_PROTOTYPE_QUERY:-0}"
+USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+case "${USE_CLASS_PROTOTYPE_QUERY}:${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
+  0:0|0:1|1:0|1:1) ;;
+  *) echo "[ERROR] 两个研究模块开关只能为 0 或 1" >&2; exit 2 ;;
+esac
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"
 SAVE_EVERY="${SAVE_EVERY:-50}"
 MAX_TRAIN_BATCHES="${MAX_TRAIN_BATCHES:-0}"
@@ -167,7 +174,10 @@ REMOVED_LOG_LINES
 
 # 整个续行块是一条命令：nohup+后台运行，RUN_ID注入进程环境，stdout/stderr追加到同一日志，stdin接/dev/null。
 # 固定传递[1,3,5]卷积核和0.75/1/1.25多尺度；调度器、阈值及其余变量显式传给train_isic.py。
+echo "[INFO] prototype_query=${USE_CLASS_PROTOTYPE_QUERY} conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_isic.py \
+  --use_class_prototype_query "${USE_CLASS_PROTOTYPE_QUERY}" \
+  --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
   --data_root "${DATA_ROOT}" \
   --dataset_name "${DATASET_NAME}" \
   --output_dir "${OUTPUT_DIR}" \

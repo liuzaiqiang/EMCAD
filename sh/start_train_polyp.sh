@@ -60,6 +60,13 @@ NUM_WORKERS="${NUM_WORKERS:-0}"
 
 DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
+# 研究模块统一在此设置；Cell 启动器 source 本脚本时也沿用这些开关。
+USE_CLASS_PROTOTYPE_QUERY="${USE_CLASS_PROTOTYPE_QUERY:-0}"
+USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+case "${USE_CLASS_PROTOTYPE_QUERY}:${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
+  0:0|0:1|1:0|1:1) ;;
+  *) echo "[ERROR] 两个研究模块开关只能为 0 或 1" >&2; exit 2 ;;
+esac
 #每隔多少个 epoch 做一次验证。1 表示每个 epoch 都验证，并用于更新 best.pth
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"
 SAVE_EVERY="${SAVE_EVERY:-0}"
@@ -225,7 +232,10 @@ PARAM_NAMES=(PROJECT_DIR DATASET_NAME DATA_ROOT OUTPUT_DIR IMG_SIZE BATCH_SIZE V
 
 # 单个多行命令块：nohup忽略挂断，env注入RUN_ID供stop脚本从/proc校验，python -u关闭解释器输出缓冲。
 # 参数固定使用[1,3,5]并行尺度、constant调度和0.75/1/1.25多尺度训练；末尾重定向日志、断开stdin并放入后台。
+echo "[INFO] prototype_query=${USE_CLASS_PROTOTYPE_QUERY} conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_polyp.py \
+  --use_class_prototype_query "${USE_CLASS_PROTOTYPE_QUERY}" \
+  --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
   --data_root "${DATA_ROOT}" \
   --dataset_name "${DATASET_NAME}" \
   --output_dir "${OUTPUT_DIR}" \

@@ -94,6 +94,9 @@ parser.add_argument('--num_workers', type=int, default=8, help='DataLoader worke
 parser.add_argument('--deterministic', type=int, default=1, help='whether use deterministic training')
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
+parser.add_argument('--use_class_prototype_query', type=int, choices=[0, 1], default=0)
+parser.add_argument('--use_class_conditional_scale_fusion', type=int, choices=[0, 1], default=0)
+parser.add_argument('--output_dir', type=str, default='./model_pth')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
 
@@ -208,7 +211,7 @@ if __name__ == "__main__":
     # snapshot_path = os.path.join("model_pth",  f"{args.Dataset}", f"encoder_{args.encoder}",  f"img_size_{args.img_size}", f"seed{args.seed}", f"batch_size_{args.batch_size}", f"lr_{args.base_lr}", f"maxEpochs_{args.max_epochs}")
 
     # 统一输出层级并自动避让同一秒内的重复目录；不改变模型或训练流程。
-    snapshot_path = make_experiment_dir(args, "Synapse", output_root="./model_pth")
+    snapshot_path = make_experiment_dir(args, "Synapse", output_root=args.output_dir)
     with open(os.path.join(snapshot_path, "config.json"), "w", encoding="utf-8") as stream:
         json.dump(vars(args), stream, ensure_ascii=False, indent=2)
 
@@ -217,7 +220,9 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     use_class_prototype_query=bool(args.use_class_prototype_query),
+                     use_class_conditional_scale_fusion=bool(args.use_class_conditional_scale_fusion))
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

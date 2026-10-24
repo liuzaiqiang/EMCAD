@@ -27,6 +27,14 @@ export DATASET="Cell"
 # 允许一份启动器服务两套任务；未指定时默认 DSB18。
 export DATASET_NAME="${DATASET_NAME:-DSB18}"
 
+# DSB18/EM 的研究开关在此设置，并传给复用的 Polyp 启动器。
+export USE_CLASS_PROTOTYPE_QUERY="${USE_CLASS_PROTOTYPE_QUERY:-0}"
+export USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+case "${USE_CLASS_PROTOTYPE_QUERY}:${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
+  0:0|0:1|1:0|1:1) ;;
+  *) echo "[ERROR] 两个研究模块开关只能为 0 或 1" >&2; exit 2 ;;
+esac
+
 # 只允许 EMCAD 论文中的两个细胞数据集名称，避免拼错后指向不存在的子目录。
 case "${DATASET_NAME}" in
   DSB18|EM) ;;

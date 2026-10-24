@@ -67,6 +67,8 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # 本地 PVT 权重目录。
         pretrained_dir=args.pretrained_dir,
+        use_class_prototype_query=bool(getattr(args, 'use_class_prototype_query', 0)),
+        use_class_conditional_scale_fusion=bool(getattr(args, 'use_class_conditional_scale_fusion', 0)),
     )
 
 

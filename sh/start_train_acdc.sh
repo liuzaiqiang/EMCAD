@@ -36,6 +36,13 @@ N_GPU="${N_GPU:-1}"
 export PYTHONUNBUFFERED=1
 
 SEED="${SEED:-2222}"
+# 研究模块统一在此设置；环境变量可覆盖，日志和 nohup 共用此值。
+USE_CLASS_PROTOTYPE_QUERY="${USE_CLASS_PROTOTYPE_QUERY:-0}"
+USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+case "${USE_CLASS_PROTOTYPE_QUERY}:${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
+  0:0|0:1|1:0|1:1) ;;
+  *) echo "[ERROR] 两个研究模块开关只能为 0 或 1" >&2; exit 2 ;;
+esac
 IMG_SIZE="${IMG_SIZE:-224}"
 BATCH_SIZE="${BATCH_SIZE:-12}"
 MAX_EPOCHS="${MAX_EPOCHS:-400}"
@@ -53,7 +60,7 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 # 数据根目录包含 train/valid/test；列表目录保存各划分病例名；模型输出固定写入 model_pth/ACDC。
 LIST_DIR="${PROJECT_DIR}/../data/ACDC/lists_ACDC"
 ROOT_PATH="${PROJECT_DIR}/../data/ACDC"
-OUTPUT_DIR="${PROJECT_DIR}/model_pth/ACDC"
+OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth/ACDC}"
 
 # 启动前逐项验证训练/验证目录、列表和PVTv2-B2预训练权重；失败统一返回退出码1。
 test -d "${ROOT_PATH}/train" || { echo "[ERROR] ROOT_PATH/train not found: ${ROOT_PATH}/train"; exit 1; }
@@ -104,7 +111,10 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 
 # 整个反斜杠块是一条后台命令：nohup抵抗终端断开，env注入RUN_ID用于停止时核验进程身份。
 # -u和PYTHONUNBUFFERED共同减少日志缓冲；stdout追加到日志，stderr合并，stdin断开，&立即返回控制权。
+echo "[INFO] prototype_query=${USE_CLASS_PROTOTYPE_QUERY} conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
+  --use_class_prototype_query "${USE_CLASS_PROTOTYPE_QUERY}" \
+  --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
   --root_path "${ROOT_PATH}" \
   --list_dir "${LIST_DIR}" \
   --output_dir "${OUTPUT_DIR}" \

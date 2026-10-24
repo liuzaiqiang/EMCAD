@@ -1,0 +1,1 @@
+dataset,split,seed,configuration,prototype_query,conditional_scale_fusion,existing_pixel_fusion,encoder,input_size,epochs,class_name,class_area_group,dice,iou,hd95,asd,parameters,flops,inference_ms,peak_memory_mb,checkpoint,notes

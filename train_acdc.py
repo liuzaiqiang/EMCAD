@@ -136,6 +136,8 @@ def parse_args():
     parser.add_argument("--n_gpu", type=int, default=1)
     # 全局随机种子。
     parser.add_argument("--seed", type=int, default=2222)
+    parser.add_argument("--use_class_prototype_query", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
     # 1 要求确定性，0 允许 cuDNN benchmark；在 main 中转为 bool。
     parser.add_argument("--deterministic", type=int, default=1)
     # 每隔多少 epoch 运行一次完整验证。

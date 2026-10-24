@@ -45,6 +45,8 @@ from lib.networks import EMCADNet
 
 # 创建命令行解析器。
 parser = argparse.ArgumentParser()
+parser.add_argument('--use_class_prototype_query', type=int, choices=[0, 1], default=0)
+parser.add_argument('--use_class_conditional_scale_fusion', type=int, choices=[0, 1], default=0)
 
 # 完整体测试目录；默认名带 _new，与训练入口默认 volume_path 不同，需人工确认划分一致。
 parser.add_argument('--volume_path', type=str,
@@ -137,6 +139,7 @@ if args.train_config:
         'num_classes', 'encoder', 'expansion_factor', 'kernel_sizes', 'lgag_ks',
         'activation_mscb', 'no_dw_parallel', 'concatenation', 'no_pretrain',
         'pretrained_dir', 'supervision',
+        'use_class_prototype_query', 'use_class_conditional_scale_fusion',
         'max_iterations', 'max_epochs', 'batch_size', 'base_lr', 'img_size', 'seed',
     )
     for config_key in config_keys_to_restore:
@@ -362,7 +365,9 @@ if __name__ == "__main__":
     model = EMCADNet(num_classes=args.num_classes, kernel_sizes=args.kernel_sizes,
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
-                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir)
+                     encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
+                     use_class_prototype_query=bool(args.use_class_prototype_query),
+                     use_class_conditional_scale_fusion=bool(args.use_class_conditional_scale_fusion))
     # 把模型移到默认 GPU；本测试入口没有 CPU 回退。
     model.cuda()
 
