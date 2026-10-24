@@ -66,7 +66,6 @@ from utils.dataset_ACDC import ACDCVolumeDataset
 def parse_args():
     # --help 中显示脚本用途。
     parser = argparse.ArgumentParser(description="Test EMCAD on ACDC")
-    parser.add_argument("--use_class_prototype_query", type=int, choices=[0, 1], default=0)
     parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
     # 必填模型权重路径；通常使用训练验证集选择出的 best.pth。
     parser.add_argument("--checkpoint", required=True)

@@ -48,7 +48,6 @@ def parse_args():
         # 该文字显示在 --help 顶部。
         description="Evaluate EMCAD on one Polyp split"
     )
-    parser.add_argument("--use_class_prototype_query", type=int, choices=[0, 1], default=0)
     parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
 
     # 必填：要评估的模型检查点。

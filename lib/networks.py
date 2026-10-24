@@ -11,7 +11,6 @@ from lib.pvtv2 import pvt_v2_b0, pvt_v2_b1, pvt_v2_b2, pvt_v2_b3, pvt_v2_b4, pvt
 from lib.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 # EMCAD 是论文提出的解码器，接收四级编码特征并逐级恢复空间分辨率。
 from lib.decoders import EMCAD
-from research_emcad.class_prototype_query import ClassPrototypeQuery
 from research_emcad.class_conditional_scale_fusion import ClassConditionalScaleFusion
 
 
@@ -64,7 +63,7 @@ class EMCADNet(nn.Module):
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
                  activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
-                 use_class_prototype_query=False, use_class_conditional_scale_fusion=False):
+                 use_class_conditional_scale_fusion=False):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
         # conv block to convert single channel to 3 channels
@@ -218,9 +217,7 @@ class EMCADNet(nn.Module):
         self.out_head2 = nn.Conv2d(channels[2], num_classes, 1)
         # 最高分辨率 d1 输出头：channels[3] -> K。
         self.out_head1 = nn.Conv2d(channels[3], num_classes, 1)
-        # 两开关均关闭时不创建任何新模块或参数，state_dict 与原始 EMCADNet 相同。
-        self.class_prototype_query = (ClassPrototypeQuery(channels[1:], num_classes)
-                                      if use_class_prototype_query else None)
+        # 开关关闭时不创建新模块或参数，state_dict 与原始 EMCADNet 相同。
         self.class_conditional_scale_fusion = (ClassConditionalScaleFusion(channels[1:], num_classes)
                                                if use_class_conditional_scale_fusion else None)
 
@@ -260,14 +257,8 @@ class EMCADNet(nn.Module):
         p2 = self.out_head2(dec_outs[2])
         # d1 位于 H/4，产生代码命名的 p1；它是实际推理采用的最高分辨率解码头。
         p1 = self.out_head1(dec_outs[3])
-        if self.class_prototype_query is not None or self.class_conditional_scale_fusion is not None:
-            features = dec_outs[1:]
-            prototype = None
-            if self.class_prototype_query is not None:
-                correction, prototype = self.class_prototype_query(features)
-                p1 = p1 + correction
-            if self.class_conditional_scale_fusion is not None:
-                p1 = self.class_conditional_scale_fusion(features, [p3, p2, p1], prototype)
+        if self.class_conditional_scale_fusion is not None:
+            p1 = self.class_conditional_scale_fusion(dec_outs[1:], [p3, p2, p1])
 
         # 这里使用 scale_factor 而非显式 size=x.shape[-2:]，所以代码假设输入尺寸经过四次下采样后能被这些倍率精确还原。
         # 352 可被 32 整除，四个输出都会严格回到 352x352；若 H/W 不是 32 的合适倍数，卷积取整可能使放大后尺寸偏离原图。

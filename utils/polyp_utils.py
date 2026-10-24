@@ -99,7 +99,6 @@ def build_model(args, pretrain):
         pretrain=pretrain,
         # PVTv2 本地预训练权重所在目录；ResNet 采用自身加载路径。
         pretrained_dir=args.pretrained_dir,
-        use_class_prototype_query=bool(getattr(args, 'use_class_prototype_query', 0)),
         use_class_conditional_scale_fusion=bool(getattr(args, 'use_class_conditional_scale_fusion', 0)),
     )
 

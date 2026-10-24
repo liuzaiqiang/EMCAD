@@ -19,7 +19,7 @@ class ClassConditionalScaleFusion(nn.Module):
         self.fusion_gain = nn.Parameter(torch.tensor(0.1))
         nn.init.normal_(self.class_queries, std=embedding_dim ** -0.5)
 
-    def forward(self, features, logits, prototypes=None):
+    def forward(self, features, logits):
         if len(features) != 3 or len(logits) != 3:
             raise ValueError("需要 d3,d2,d1 特征及相应三个 logits")
         batch = features[0].shape[0]
@@ -29,12 +29,7 @@ class ClassConditionalScaleFusion(nn.Module):
                     or logit.shape[:2] != (batch, self.num_classes)
                     or feature.shape[-2:] != logit.shape[-2:]):
                 raise ValueError("尺度融合的特征与 logits 尺寸或通道不匹配")
-        if prototypes is None:
-            query = F.normalize(self.class_queries, dim=-1).unsqueeze(0).expand(batch, -1, -1)
-        else:
-            if prototypes.shape != (batch, self.num_classes, self.class_queries.shape[1]):
-                raise ValueError("原型形状必须为 [B,K,D]")
-            query = F.normalize(prototypes + self.class_queries.unsqueeze(0), dim=-1)
+        query = F.normalize(self.class_queries, dim=-1).unsqueeze(0).expand(batch, -1, -1)
         pooled = [F.normalize(proj(feature.mean(dim=(-2, -1))), dim=-1)
                   for feature, proj in zip(features, self.projections)]
         score = torch.stack([torch.einsum('bkd,bd->bk', query, value) for value in pooled], dim=-1)
