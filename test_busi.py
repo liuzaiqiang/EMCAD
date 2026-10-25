@@ -170,7 +170,7 @@ def _parse_args():
         # 设置默认路径。
         args.data_root = (
             # 准备数据根。
-            "../data/busi/target"
+            "../../data/busi/target"
         )
 
     # 检查点转绝对 Path。

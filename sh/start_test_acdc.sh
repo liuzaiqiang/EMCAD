@@ -36,9 +36,9 @@ INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-8}"
 Z_SPACING="${Z_SPACING:-10.0}"
 MAX_CASES="${MAX_CASES:-0}"
 
-# 病例列表和数据根目录采用项目旁的固定ACDC布局；CKPT必须由调用者明确指定。
-LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../data/ACDC/lists_ACDC}"
-ROOT_PATH="${PROJECT_DIR}/../data/ACDC"
+# 病例列表和数据根目录采用项目上两级的固定ACDC布局；CKPT必须由调用者明确指定。
+LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../../data/ACDC/lists_ACDC}"
+ROOT_PATH="${PROJECT_DIR}/../../data/ACDC"
 # 默认在 ACDC 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 

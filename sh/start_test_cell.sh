@@ -15,8 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Cell 数据根默认与项目同级放置；服务器数据位置不同可传 DATA_ROOT 覆盖。
-export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/cell/target}"
+# Cell 数据根默认位于项目上两级；服务器数据位置不同可传 DATA_ROOT 覆盖。
+export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/cell/target}"
 
 # 固定日志标签和模型系列名为 Cell。
 export DATASET="Cell"

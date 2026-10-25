@@ -41,7 +41,7 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 DEVICE="${DEVICE:-auto}"
 
 # CKPT必须显式提供；prepared数据位于DATA_ROOT/<ISIC版本>/<划分>。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/isic/target}"
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/isic/target}"
 # 默认在 ISIC 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 
