@@ -35,6 +35,8 @@ EXPECTED_PROTOCOLS = {
 
 # 必须从训练 config.json 恢复并检查的模型结构字段及其命令行选项。
 ARCHITECTURE_OPTIONS = {
+    "use_class_conditional_scale_fusion": "--use_class_conditional_scale_fusion",
+    "use_spatial_kernel_selection": "--use_spatial_kernel_selection",
     # 编码器类型。
     "encoder": "--encoder",
     # MSDC 多尺度核。
@@ -188,6 +190,9 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 配置缺字段意味着无法完整重建训练模型。
+        if field not in config and field in (
+                "use_class_conditional_scale_fusion", "use_spatial_kernel_selection"):
+            continue  # Checkpoints predating these switches have both modules off.
         if field not in config:
             # 报告具体字段。
             raise RuntimeError(

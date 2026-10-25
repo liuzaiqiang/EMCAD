@@ -67,6 +67,7 @@ def parse_args():
     # --help 中显示脚本用途。
     parser = argparse.ArgumentParser(description="Test EMCAD on ACDC")
     parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_spatial_kernel_selection", type=int, choices=[0, 1], default=0)
     # 必填模型权重路径；通常使用训练验证集选择出的 best.pth。
     parser.add_argument("--checkpoint", required=True)
     # ACDC 根目录，测试时要求存在 test/。
@@ -128,6 +129,8 @@ def restore_checkpoint_config(args):
         config = json.load(stream)
 
     options = {
+        "use_class_conditional_scale_fusion": "--use_class_conditional_scale_fusion",
+        "use_spatial_kernel_selection": "--use_spatial_kernel_selection",
         "encoder": "--encoder",
         "kernel_sizes": "--kernel_sizes",
         "expansion_factor": "--expansion_factor",

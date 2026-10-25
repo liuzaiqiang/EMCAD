@@ -65,6 +65,7 @@ def parse_args():
         description="Train EMCAD on one Polyp dataset"
     )
     parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_spatial_kernel_selection", type=int, choices=[0, 1], default=0)
 
     # 准备数据总根，其下按数据集名和 train/val/test 组织。
     parser.add_argument(

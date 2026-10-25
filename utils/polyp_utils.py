@@ -100,6 +100,7 @@ def build_model(args, pretrain):
         # PVTv2 本地预训练权重所在目录；ResNet 采用自身加载路径。
         pretrained_dir=args.pretrained_dir,
         use_class_conditional_scale_fusion=bool(getattr(args, 'use_class_conditional_scale_fusion', 0)),
+        use_spatial_kernel_selection=bool(getattr(args, 'use_spatial_kernel_selection', 0)),
     )
 
 

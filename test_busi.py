@@ -62,6 +62,8 @@ EXPECTED_CLASS_COUNTS = {
 
 # 会影响模型结构/输入的 config 字段与命令行开关映射。
 ARCHITECTURE_OPTIONS = {
+    "use_class_conditional_scale_fusion": "--use_class_conditional_scale_fusion",
+    "use_spatial_kernel_selection": "--use_spatial_kernel_selection",
     # 编码器。
     "encoder": "--encoder",
     # MSDC 核尺寸。
@@ -257,6 +259,9 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 缺字段无法确定 state_dict shape。
+        if field not in config and field in (
+                "use_class_conditional_scale_fusion", "use_spatial_kernel_selection"):
+            continue  # Checkpoints predating these switches have both modules off.
         if field not in config:
             # 报告字段。
             raise RuntimeError(

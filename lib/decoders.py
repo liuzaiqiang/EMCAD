@@ -11,6 +11,7 @@ import math
 from timm.models.layers import trunc_normal_tf_
 # named_apply 会递归访问当前模块及其子模块，并把模块名称一并传给初始化函数。
 from timm.models.helpers import named_apply
+from research_emcad.spatial_kernel_selection import SpatialKernelSelection
 
 
 # ==================================================================================================
@@ -353,7 +354,7 @@ class MSCB(nn.Module):
 
     # 关键参数：C_in、C_out、步幅、多尺度核、扩张倍率、并/串行和分支聚合方式。
     def __init__(self, in_channels, out_channels, stride, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True,
-                 add=True, activation='relu6'):
+                 add=True, activation='relu6', use_spatial_kernel_selection=False):
         # 参数彼此的影响：kernel_sizes 决定 MSDC 分支数和感受野；expansion_factor 决定中间宽度；
         # dw_parallel 决定分支依赖关系；add 决定分支合并方式；activation 决定 pconv1 与 MSDC 激活。
         # kernel_sizes 的默认 list 在本实现中只读取、不修改，因此不会触发常见的“可变默认参数被污染”问题。
@@ -403,6 +404,10 @@ class MSCB(nn.Module):
         # MSDC 在 C_ex 通道上执行多个深度卷积尺度。
         self.msdc = MSDC(self.ex_channels, self.kernel_sizes, self.stride, self.activation,
                          dw_parallel=self.dw_parallel)
+        self.spatial_kernel_selection = (
+            SpatialKernelSelection(self.ex_channels, self.n_scales)
+            if use_spatial_kernel_selection and self.n_scales > 1 else None
+        )
         # 注意：add 只控制“这些 MSDC 尺度分支”的融合，不控制 EMCAD 主路与 encoder skip 的融合。
         # 加法聚合不改变通道数，合并后仍是 C_ex。
         if self.add == True:
@@ -445,6 +450,8 @@ class MSCB(nn.Module):
         pout1 = self.pconv1(x)
         # 得到多个 (B,C_ex,H/stride,W/stride) 深度卷积结果。
         msdc_outs = self.msdc(pout1)
+        if self.spatial_kernel_selection is not None:
+            msdc_outs = self.spatial_kernel_selection(pout1, msdc_outs)
         # 论文式(5)默认采用逐元素求和聚合多尺度响应。
         if self.add == True:
             # 这里不是 Python 的 sum(msdc_outs)，而是显式循环；梯度仍会沿每次张量加法传回所有分支。
@@ -493,7 +500,7 @@ class MSCB(nn.Module):
 #   后续 n-1 块：始终保持 (B,C_out,H_out,W_out)。
 # 当前 EMCAD 的 mscb4/3/2/1 全部传 n=1、stride=1，因此每级只创建一个 MSCB。
 def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True,
-              add=True, activation='relu6'):
+              add=True, activation='relu6', use_spatial_kernel_selection=False):
     """
     create a series of multi-scale convolution blocks.
     """
@@ -502,7 +509,8 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
     convs = []
     # 第一个块负责 C_in -> C_out，并可使用调用方指定的 stride。
     mscb = MSCB(in_channels, out_channels, stride, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                dw_parallel=dw_parallel, add=add, activation=activation)
+                dw_parallel=dw_parallel, add=add, activation=activation,
+                use_spatial_kernel_selection=use_spatial_kernel_selection)
     # 加入第一个 MSCB。
     convs.append(mscb)
     # n>1 时继续堆叠保持 C_out 和 stride=1 的块。
@@ -513,7 +521,8 @@ def MSCBLayer(in_channels, out_channels, n=1, stride=1, kernel_sizes=[1, 3, 5], 
         for i in range(1, n):
             # 后续块均保持通道和空间尺寸。
             mscb = MSCB(out_channels, out_channels, 1, kernel_sizes=kernel_sizes, expansion_factor=expansion_factor,
-                        dw_parallel=dw_parallel, add=add, activation=activation)
+                        dw_parallel=dw_parallel, add=add, activation=activation,
+                        use_spatial_kernel_selection=use_spatial_kernel_selection)
             # 把后续块加入列表。
             convs.append(mscb)
     # Sequential 将列表中的块按顺序执行并注册参数。
@@ -879,7 +888,7 @@ class SAB(nn.Module):
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6'):
+                 add=True, lgag_ks=3, activation='relu6', use_spatial_kernel_selection=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -891,7 +900,7 @@ class EMCAD(nn.Module):
         # 最深层 d4 只做 MSCAM 细化，不需要先上采样；MSCB 保持 channels[0]。
         self.mscb4 = MSCBLayer(channels[0], channels[0], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation, use_spatial_kernel_selection=use_spatial_kernel_selection)
         # d4 不与 skip 融合，因为 x 本身就是编码器最深层 x4；先在原始最低分辨率上做注意力和多尺度细化，
         # 可以用较低空间计算量获得最强语义表示，再开始逐级恢复尺寸。
 
@@ -905,7 +914,7 @@ class EMCAD(nn.Module):
         # 融合 skip 后执行第三级 MSCAM 中的 MSCB，通道保持 channels[1]。
         self.mscb3 = MSCBLayer(channels[1], channels[1], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation, use_spatial_kernel_selection=use_spatial_kernel_selection)
 
         # 第二级上采样：channels[1] -> channels[2]，空间尺寸再乘 2。
         # eucb2 输出通道与 x2/skip[1] 完全一致，才能让 LGAG 两路投影和后续逐元素加法成立。
@@ -916,7 +925,7 @@ class EMCAD(nn.Module):
         # 第二级 MSCB 细化，通道保持 channels[2]。
         self.mscb2 = MSCBLayer(channels[2], channels[2], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation, use_spatial_kernel_selection=use_spatial_kernel_selection)
 
         # 第一级上采样：channels[2] -> channels[3]，到达编码器最高分辨率特征层。
         # “第一级”仍只到 encoder stage1 的 1/4 尺度；解码器内部没有继续到 1/2 或原图尺度。
@@ -927,7 +936,7 @@ class EMCAD(nn.Module):
         # 第一级 MSCB 输出解码器最高分辨率特征 d1。
         self.mscb1 = MSCBLayer(channels[3], channels[3], n=1, stride=1, kernel_sizes=kernel_sizes,
                                expansion_factor=expansion_factor, dw_parallel=dw_parallel, add=add,
-                               activation=activation)
+                               activation=activation, use_spatial_kernel_selection=use_spatial_kernel_selection)
 
         # 四个解码级分别拥有独立 CAB；权重通道与本级特征一致。
         # CAB4/3/2/1 的参数不能共享，因为它们的通道数通常分别为 C4/C3/C2/C1，卷积 shape 不同。
