@@ -29,9 +29,14 @@ export DATASET_NAME="${DATASET_NAME:-DSB18}"
 
 # DSB18/EM 的研究开关在此设置，并传给复用的 Polyp 启动器。
 export USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+export USE_LOW_RANK_COVARIANCE="${USE_LOW_RANK_COVARIANCE:-0}"
 case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
   0|1) ;;
   *) echo "[ERROR] 类别条件尺度融合开关只能为 0 或 1" >&2; exit 2 ;;
+esac
+case "${USE_LOW_RANK_COVARIANCE}" in
+  0|1) ;;
+  *) echo "[ERROR] 低秩协方差开关只能为 0 或 1" >&2; exit 2 ;;
 esac
 
 # 只允许 EMCAD 论文中的两个细胞数据集名称，避免拼错后指向不存在的子目录。

@@ -11,6 +11,7 @@ import math
 from timm.models.layers import trunc_normal_tf_
 # named_apply 会递归访问当前模块及其子模块，并把模块名称一并传给初始化函数。
 from timm.models.helpers import named_apply
+from research_emcad.low_rank_covariance import LowRankCovarianceInteraction
 
 
 # ==================================================================================================
@@ -879,7 +880,7 @@ class SAB(nn.Module):
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6'):
+                 add=True, lgag_ks=3, activation='relu6', use_low_rank_covariance=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -942,6 +943,12 @@ class EMCAD(nn.Module):
         # SAB 不依赖通道数，因此四个解码级共享同一个 7x7 空间注意力模块及其参数。
         # 同一个 Module 多次调用在 PyTorch 中是合法的：每次根据当前输入重新计算权重图，但学习参数是同一份。
         self.sab = SAB()
+        # Optional second-order interaction is added after all original layers.
+        # It has deterministic parameters, so the existing initialization is unchanged.
+        self.low_rank_covariance4 = (LowRankCovarianceInteraction(channels[0])
+                                     if use_low_rank_covariance else None)
+        self.low_rank_covariance3 = (LowRankCovarianceInteraction(channels[1])
+                                     if use_low_rank_covariance else None)
 
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
     def forward(self, x, skips):
@@ -958,6 +965,8 @@ class EMCAD(nn.Module):
         # MSCB 完成多尺度深度卷积细化；CAB -> SAB -> MSCB 合起来对应论文式(3)的 MSCAM。
         # MSCB 内部有残差，因此即使注意力压低某些响应，主分支仍能在训练中学习必要的局部修正。
         d4 = self.mscb4(d4)
+        if self.low_rank_covariance4 is not None:
+            d4 = self.low_rank_covariance4(d4)
 
         # EUCB3
         # d4 二倍上采样并把 C4 投影为 C3；PVTv2-B2 为 512 -> 320。
@@ -982,6 +991,8 @@ class EMCAD(nn.Module):
         d3 = self.sab(d3) * d3
         # 第三级多尺度卷积细化；输出形状保持不变。
         d3 = self.mscb3(d3)
+        if self.low_rank_covariance3 is not None:
+            d3 = self.low_rank_covariance3(d3)
 
         # EUCB2
         # 再次二倍上采样并执行 C3 -> C2；PVTv2-B2 为 320 -> 128。

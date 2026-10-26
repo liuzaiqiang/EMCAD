@@ -49,6 +49,7 @@ def parse_args():
         description="Evaluate EMCAD on one Polyp split"
     )
     parser.add_argument("--use_class_conditional_scale_fusion", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--use_low_rank_covariance", type=int, choices=[0, 1], default=0)
 
     # 必填：要评估的模型检查点。
     parser.add_argument(
@@ -272,6 +273,8 @@ def restore_checkpoint_model_options(args):
         config = json.load(stream)
 
     options = {
+        "use_class_conditional_scale_fusion": "--use_class_conditional_scale_fusion",
+        "use_low_rank_covariance": "--use_low_rank_covariance",
         "encoder": "--encoder",
         "kernel_sizes": "--kernel_sizes",
         "expansion_factor": "--expansion_factor",

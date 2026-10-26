@@ -1,1 +1,1 @@
-dataset,split,seed,configuration,conditional_scale_fusion,existing_pixel_fusion,encoder,input_size,epochs,class_name,class_area_group,dice,iou,hd95,asd,parameters,flops,inference_ms,peak_memory_mb,checkpoint,notes
+dataset,split,seed,configuration,conditional_scale_fusion,low_rank_covariance,existing_pixel_fusion,encoder,input_size,epochs,class_name,class_area_group,dice,iou,hd95,asd,parameters,flops,inference_ms,peak_memory_mb,checkpoint,notes

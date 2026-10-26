@@ -95,6 +95,7 @@ parser.add_argument('--deterministic', type=int, default=1, help='whether use de
 # 同一份数据、代码和环境下，固定种子用于尽量复现实验随机序列。
 parser.add_argument('--seed', type=int, default=2222, help='random seed')
 parser.add_argument('--use_class_conditional_scale_fusion', type=int, choices=[0, 1], default=0)
+parser.add_argument('--use_low_rank_covariance', type=int, choices=[0, 1], default=0)
 parser.add_argument('--output_dir', type=str, default='./model_pth')
 # 真正解析当前进程的命令行；未显式传入的选项采用上方 default。
 args = parser.parse_args()
@@ -220,7 +221,8 @@ if __name__ == "__main__":
                      expansion_factor=args.expansion_factor, dw_parallel=not args.no_dw_parallel,
                      add=not args.concatenation, lgag_ks=args.lgag_ks, activation=args.activation_mscb,
                      encoder=args.encoder, pretrain=not args.no_pretrain, pretrained_dir=args.pretrained_dir,
-                     use_class_conditional_scale_fusion=bool(args.use_class_conditional_scale_fusion))
+                     use_class_conditional_scale_fusion=bool(args.use_class_conditional_scale_fusion),
+                     use_low_rank_covariance=bool(args.use_low_rank_covariance))
 
     # 把模型参数移动到默认 CUDA 设备；本入口没有 CPU 回退，因此无 CUDA 时会直接报错。
     model.cuda()

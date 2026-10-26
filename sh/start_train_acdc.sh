@@ -38,9 +38,14 @@ export PYTHONUNBUFFERED=1
 SEED="${SEED:-2222}"
 # 研究模块统一在此设置；环境变量可覆盖，日志和 nohup 共用此值。
 USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+USE_LOW_RANK_COVARIANCE="${USE_LOW_RANK_COVARIANCE:-0}"
 case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
   0|1) ;;
   *) echo "[ERROR] 类别条件尺度融合开关只能为 0 或 1" >&2; exit 2 ;;
+esac
+case "${USE_LOW_RANK_COVARIANCE}" in
+  0|1) ;;
+  *) echo "[ERROR] 低秩协方差开关只能为 0 或 1" >&2; exit 2 ;;
 esac
 IMG_SIZE="${IMG_SIZE:-224}"
 BATCH_SIZE="${BATCH_SIZE:-12}"
@@ -110,9 +115,10 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 
 # 整个反斜杠块是一条后台命令：nohup抵抗终端断开，env注入RUN_ID用于停止时核验进程身份。
 # -u和PYTHONUNBUFFERED共同减少日志缓冲；stdout追加到日志，stderr合并，stdin断开，&立即返回控制权。
-echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
+echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION} low_rank_covariance=${USE_LOW_RANK_COVARIANCE}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" python -u train_acdc.py \
   --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
+  --use_low_rank_covariance "${USE_LOW_RANK_COVARIANCE}" \
   --root_path "${ROOT_PATH}" \
   --list_dir "${LIST_DIR}" \
   --output_dir "${OUTPUT_DIR}" \

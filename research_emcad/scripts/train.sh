@@ -4,9 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
-case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
-  0) EXPERIMENT_NAME=baseline ;;
-  1) EXPERIMENT_NAME=class_conditional_scale_fusion ;;
+USE_LOW_RANK_COVARIANCE="${USE_LOW_RANK_COVARIANCE:-0}"
+case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}:${USE_LOW_RANK_COVARIANCE}" in
+  0:0) EXPERIMENT_NAME=baseline ;;
+  1:0) EXPERIMENT_NAME=class_conditional_scale_fusion ;;
+  0:1) EXPERIMENT_NAME=low_rank_covariance ;;
+  1:1) EXPERIMENT_NAME=scale_fusion_and_covariance ;;
   *) echo "[ERROR] module switch must be 0 or 1" >&2; exit 2 ;;
 esac
 (( $# >= 2 )) || { echo "用法: bash research_emcad/scripts/train.sh <synapse|acdc|polyp|isic|busi|cell> <seed1> [seed2 ...]" >&2; exit 2; }
@@ -21,7 +24,8 @@ esac
 test -f "${PROJECT_DIR}/sh/run_seed_queue.sh"
 test -f "${PROJECT_DIR}/${TRAIN_ENTRY}" || { echo "[ERROR] training entry missing: ${TRAIN_ENTRY}" >&2; exit 1; }
 export USE_CLASS_CONDITIONAL_SCALE_FUSION
+export USE_LOW_RANK_COVARIANCE
 OUTPUT_ROOT="${OUTPUT_DIR:-${PROJECT_DIR}/research_emcad/runs}"
 export OUTPUT_DIR="${OUTPUT_ROOT}/${EXPERIMENT_NAME}"
-echo "[RESEARCH] experiment=${EXPERIMENT_NAME} conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION} output=${OUTPUT_DIR} dataset=$1 seeds=${*:2}"
+echo "[RESEARCH] experiment=${EXPERIMENT_NAME} conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION} low_rank_covariance=${USE_LOW_RANK_COVARIANCE} output=${OUTPUT_DIR} dataset=$1 seeds=${*:2}"
 exec bash "${PROJECT_DIR}/sh/run_seed_queue.sh" "$@"

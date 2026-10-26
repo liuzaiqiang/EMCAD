@@ -52,9 +52,14 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 SEED="${SEED:-2222}"
 # 研究模块统一在此设置；日志和 nohup 共用此值。
 USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+USE_LOW_RANK_COVARIANCE="${USE_LOW_RANK_COVARIANCE:-0}"
 case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
   0|1) ;;
   *) echo "[ERROR] 类别条件尺度融合开关只能为 0 或 1" >&2; exit 2 ;;
+esac
+case "${USE_LOW_RANK_COVARIANCE}" in
+  0|1) ;;
+  *) echo "[ERROR] 低秩协方差开关只能为 0 或 1" >&2; exit 2 ;;
 esac
 VALIDATE_EVERY="${VALIDATE_EVERY:-1}"
 SAVE_EVERY="${SAVE_EVERY:-50}"
@@ -155,9 +160,10 @@ REMOVED_LOG_LINES
 
 # 单个多行后台命令：nohup防终端断开，env RUN_ID供stop脚本核验，python -u关闭解释器缓冲。
 # stdout追加日志、stderr并入stdout、stdin断开；没有传scale_rates且train_busi.py会强制禁用多尺度。
-echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
+echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION} low_rank_covariance=${USE_LOW_RANK_COVARIANCE}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u train_busi.py \
   --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
+  --use_low_rank_covariance "${USE_LOW_RANK_COVARIANCE}" \
   --data_root "${DATA_ROOT}" \
   --dataset_name "${DATASET_NAME}" \
   --output_dir "${OUTPUT_DIR}" \

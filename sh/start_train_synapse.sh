@@ -4,13 +4,23 @@
 # -e 遇到未处理的非零退出码即停止，-u 拒绝未定义变量，pipefail 让管道任一环节失败都算失败。
 set -euo pipefail
 
+#210服务器
+CONDA_BASE="/home/lzq/lzqEnvs/miniconda3"
+CONDA_ENV_PREFIX="/home/lzq/lzqEnvs/miniconda3/envs/sld_emcad"
 
+#并行
 # CONDA_BASE="/base/mambaforge"
 # CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
+
 CONDA_BASE="/home/mlf/anaconda3"
 CONDA_ENV_PREFIX="/home/mlf/anaconda3/envs/sld_emcad"
+
 source "${CONDA_BASE}/etc/profile.d/conda.sh"
 conda activate "${CONDA_ENV_PREFIX}"
+
+
+
+
 
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,11 +41,16 @@ SEED="${SEED:-2222}"
 
 #类别条件尺度融合
 USE_CLASS_CONDITIONAL_SCALE_FUSION="${USE_CLASS_CONDITIONAL_SCALE_FUSION:-0}"
+USE_LOW_RANK_COVARIANCE="${USE_LOW_RANK_COVARIANCE:-0}"
 
 
 case "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" in
   0|1) ;;
   *) echo "[ERROR] 类别条件尺度融合开关只能为 0 或 1" >&2; exit 2 ;;
+esac
+case "${USE_LOW_RANK_COVARIANCE}" in
+  0|1) ;;
+  *) echo "[ERROR] 低秩协方差开关只能为 0 或 1" >&2; exit 2 ;;
 esac
 MAX_EPOCHS=300
 DATASET="Synapse"
@@ -144,9 +159,10 @@ PARAM_NAMES=(
 # 启动命令块：nohup使进程忽略终端挂断信号；env把RUN_ID写入子进程环境，停止脚本会读取它防止PID复用误杀。  >> 追加标准输出，2>&1把标准错误并入同一日志，< /dev/null断开标准输入
 # 参数列表和日志重定向必须属于同一条 shell 命令；最后一个参数行用反斜杠续接重定向行，
 # 这样 $! 才会记录真正运行 Python 训练的后台进程，且 stdout/stderr 会进入本次训练日志。
-echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION}" | tee -a "${LOG_FILE}"
+echo "[INFO] conditional_scale_fusion=${USE_CLASS_CONDITIONAL_SCALE_FUSION} low_rank_covariance=${USE_LOW_RANK_COVARIANCE}" | tee -a "${LOG_FILE}"
 nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --use_class_conditional_scale_fusion "${USE_CLASS_CONDITIONAL_SCALE_FUSION}" \
+  --use_low_rank_covariance "${USE_LOW_RANK_COVARIANCE}" \
   --output_dir "${OUTPUT_DIR:-./model_pth}" \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \

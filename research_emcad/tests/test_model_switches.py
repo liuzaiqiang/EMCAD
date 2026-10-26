@@ -9,6 +9,43 @@ from lib.networks import EMCADNet
 
 
 class ModelSwitchTests(unittest.TestCase):
+    def test_covariance_switch_preserves_baseline_and_reaches_final_head(self):
+        torch.manual_seed(619)
+        baseline = EMCADNet(num_classes=1, encoder='pvt_v2_b0', pretrain=False).eval()
+        self.assertIsNone(baseline.decoder.low_rank_covariance4)
+        self.assertIsNone(baseline.decoder.low_rank_covariance3)
+        torch.manual_seed(619)
+        covariance = EMCADNet(num_classes=1, encoder='pvt_v2_b0', pretrain=False,
+                              use_low_rank_covariance=True).eval()
+        base_state, cov_state = baseline.state_dict(), covariance.state_dict()
+        self.assertEqual(len(set(cov_state) - set(base_state)), 4)
+        self.assertTrue(all(torch.equal(value, cov_state[key]) for key, value in base_state.items()))
+        image = torch.randn(1, 3, 128, 128)
+        with torch.no_grad():
+            self.assertTrue(all(torch.equal(a, b) for a, b in
+                                zip(baseline(image), covariance(image))))
+        covariance.train()
+        covariance(image.repeat(2, 1, 1, 1))[-1].square().mean().backward()
+        for module in (covariance.decoder.low_rank_covariance4,
+                       covariance.decoder.low_rank_covariance3):
+            self.assertIsNotNone(module.expand.grad)
+            self.assertGreater(module.expand.grad.abs().sum().item(), 0)
+
+    def test_covariance_joint_starts_from_scale_only(self):
+        torch.manual_seed(701)
+        scale_only = EMCADNet(num_classes=4, encoder='pvt_v2_b0', pretrain=False,
+                              use_class_conditional_scale_fusion=True).eval()
+        torch.manual_seed(701)
+        joint = EMCADNet(num_classes=4, encoder='pvt_v2_b0', pretrain=False,
+                         use_class_conditional_scale_fusion=True,
+                         use_low_rank_covariance=True).eval()
+        self.assertTrue(all(torch.equal(value, joint.state_dict()[key])
+                            for key, value in scale_only.state_dict().items()))
+        image = torch.randn(1, 3, 128, 128)
+        with torch.no_grad():
+            self.assertTrue(all(torch.equal(a, b) for a, b in
+                                zip(scale_only(image), joint(image))))
+
     def test_off_matches_original_heads(self):
         torch.manual_seed(123)
         model = EMCADNet(num_classes=4, encoder='pvt_v2_b0', pretrain=False,
