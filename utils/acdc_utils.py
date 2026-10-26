@@ -277,12 +277,14 @@ def calculate_metric_percase(prediction, target, voxelspacing=None):
                 )
             ),
         }
-    # 延续仓库现有 Synapse 指标策略：预测有前景但真值为空时返回这组值。
+    # 假阳性：沿用 ACDC 验证阶段的口径，Dice 和 IoU 均记为 1；表面距离未定义。
     if prediction.any() and not target.any():
-        # 这里只解释原始策略，不改变其数学含义或数值。
-        return {"dice": 1.0, "hd95": 0.0, "jaccard": 1.0, "asd": 0.0}
-    # 其余空前景组合统一返回四项零值。
-    return {"dice": 0.0, "hd95": 0.0, "jaccard": 0.0, "asd": 0.0}
+        return {"dice": 1.0, "hd95": float("nan"), "jaccard": 1.0, "asd": float("nan")}
+    # 漏检：真值有前景但预测为空，同样没有可定义的双向表面距离。
+    if target.any():
+        return {"dice": 0.0, "hd95": float("nan"), "jaccard": 0.0, "asd": float("nan")}
+    # 双方均无前景视为完全一致；距离为 0。
+    return {"dice": 1.0, "hd95": 0.0, "jaccard": 1.0, "asd": 0.0}
 
 
 # 对完整多类别体数据分别计算每个前景类别的病例级指标。

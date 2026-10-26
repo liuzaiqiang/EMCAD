@@ -57,10 +57,15 @@ export INPUT_CHANNELS="${INPUT_CHANNELS:-3}"
 # 以免严格模式 set -u 因变量未定义而在创建训练进程前退出；多卡时可在命令前覆盖。
 export N_GPU="${N_GPU:-1}"
 
-# Cell 的统一创新点开关：该脚本随后 source 通用二分类启动器，
+# Cell 的两个独立创新点开关：该脚本随后 source 通用二分类启动器，
 # 这里显式声明并校验参数，确保 DSB18/EM 的配置在入口处可见且可复现。
-export USE_AREA_ADAPTIVE_TVERSKY="${USE_AREA_ADAPTIVE_TVERSKY:-0}"
+export USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+export USE_AREA_ADAPTIVE_TVERSKY="${USE_AREA_ADAPTIVE_TVERSKY:-1}"
 export AREA_TVERSKY_WEIGHT="${AREA_TVERSKY_WEIGHT:-1.0}"
+case "${USE_CONTENT_AWARE_ANTIALIAS}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1" >&2; exit 2 ;;
+esac
 case "${USE_AREA_ADAPTIVE_TVERSKY}" in
   0|1) ;;
   *) echo "[ERROR] USE_AREA_ADAPTIVE_TVERSKY must be 0 or 1" >&2; exit 2 ;;

@@ -38,7 +38,7 @@ MAX_CASES="${MAX_CASES:-0}"
 
 # 病例列表和数据根目录采用项目旁的固定ACDC布局；CKPT必须由调用者明确指定。
 LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../data/ACDC/lists_ACDC}"
-ROOT_PATH="${PROJECT_DIR}/../data/ACDC"
+ROOT_PATH="${ROOT_PATH:-${PROJECT_DIR}/../data/ACDC}"
 # 默认在 ACDC 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 
@@ -80,7 +80,7 @@ echo "[INFO] RUN_ID=${RUN_ID}"
 } | tee -a "${LOG_FILE}"
 
 # 整个续行块是一条后台命令；nohup抵抗终端断开，env把RUN_ID写入子进程环境供停止脚本核验。
-# 模型结构、融合/CAA选项和输入尺寸均由 test_acdc.py 从 CONFIG_FILE 自动恢复，启动器不再重复填写。
+# 模型结构、CAA 选项和输入尺寸均由 test_acdc.py 从 CONFIG_FILE 自动恢复。
 # --save_nii和--save_npz分别请求保存医学影像格式预测与数组结果；输出追加日志、错误合并、输入断开并转入后台。
 nohup env RUN_ID="${RUN_ID}" "${PYTHON_BIN}" -u test_acdc.py \
   --checkpoint "${CKPT}" \
