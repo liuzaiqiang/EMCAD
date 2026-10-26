@@ -4,7 +4,7 @@
 #
 # 本脚本设置 Cell 数据集默认值，然后复用 start_test_polyp.sh 与 test_polyp.py 中的
 # 检查点加载、验证指标、逐图输出和 CSV 逻辑，避免维护两套相同推理代码。
-# 检查点目录中的 config.json 会恢复 encoder、输入通道、融合/CAA 与 DSB18 掩膜解释设置，
+# 检查点目录中的 config.json 会恢复 encoder、输入通道、CAA/LORF 与 DSB18 掩膜解释设置，
 # 因此测试时应传入本次训练目录中的 best.pth。
 # -----------------------------------------------------------------------------
 
@@ -15,8 +15,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Cell 数据根默认与项目同级放置；服务器数据位置不同可传 DATA_ROOT 覆盖。
-export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/cell/target}"
+# Cell 数据根默认位于项目上上级；服务器数据位置不同可传 DATA_ROOT 覆盖。
+export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/cell/target}"
 
 # 固定日志标签和模型系列名为 Cell。
 export DATASET="Cell"

@@ -18,14 +18,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Cell 数据根默认位于仓库同级的 data/cell/target；集群使用其他挂载点时可传 DATA_ROOT 覆盖。
-export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/cell/target}"
+# Cell 数据根默认位于项目上上级的 data/cell/target；集群使用其他挂载点时可传 DATA_ROOT 覆盖。
+export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/cell/target}"
 
 # 固定系列标签为 Cell，让训练日志和模型输出不会混入 Polyp 目录。
 export DATASET="Cell"
 
 # 允许一份启动器服务两套任务；未指定时默认 DSB18。
 export DATASET_NAME="${DATASET_NAME:-DSB18}"
+export USE_LORF="${USE_LORF:-0}"
 
 # 只允许 EMCAD 论文中的两个细胞数据集名称，避免拼错后指向不存在的子目录。
 case "${DATASET_NAME}" in

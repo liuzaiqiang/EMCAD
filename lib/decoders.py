@@ -943,10 +943,37 @@ class SAB(nn.Module):
 #   EUCB 的核固定为 3、激活固定采用其默认 ReLU；CAB/LGAG 的激活也使用各类默认 ReLU；
 #   num_classes、encoder、pretrain 都不属于 EMCAD，由 lib/networks.py 管理。
 # ==================================================================================================
+class LocalOrdinalResidual(nn.Module):
+    """Enhance a skip feature using relative responses to its four neighbours."""
+
+    def __init__(self, channels):
+        super().__init__()
+        hidden = max(8, channels // 4)
+        self.reduce = nn.Conv2d(channels, hidden, 1, bias=False)
+        self.project = nn.Conv2d(4 * hidden, channels, 1, bias=False)
+        self.scale = nn.Parameter(torch.tensor(0.1))
+        # Start from the original skip tensor; learn the correction gradually.
+        nn.init.zeros_(self.project.weight)
+
+    def forward(self, x):
+        z = self.reduce(x)
+        padded = torch.nn.functional.pad(z, (1, 1, 1, 1), mode='replicate')
+        h, w = z.shape[-2:]
+        neighbours = (
+            padded[:, :, :h, 1:w + 1],
+            padded[:, :, 2:h + 2, 1:w + 1],
+            padded[:, :, 1:h + 1, :w],
+            padded[:, :, 1:h + 1, 2:w + 2],
+        )
+        ordinal = torch.cat([torch.tanh(z - neighbour) for neighbour in neighbours], dim=1)
+        return x + torch.clamp(self.scale, 0.0, 1.0) * self.project(ordinal)
+
+
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1):
+                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1,
+                 use_lorf=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
@@ -1015,6 +1042,8 @@ class EMCAD(nn.Module):
         # SAB 不依赖通道数，因此四个解码级共享同一个 7x7 空间注意力模块及其参数。
         # 同一个 Module 多次调用在 PyTorch 中是合法的：每次根据当前输入重新计算权重图，但学习参数是同一份。
         self.sab = SAB()
+        # No LORF submodule or parameters exist in the disabled model.
+        self.lorf1 = LocalOrdinalResidual(channels[3]) if use_lorf else None
 
     # x 是最深层 x4，skips 必须按 [x3,x2,x1] 从深到浅传入。
     def forward(self, x, skips):
@@ -1088,6 +1117,8 @@ class EMCAD(nn.Module):
         # 门控最高分辨率编码器特征 x1。
         # x1 往往包含最丰富的边界/纹理，也最容易带入背景噪声，因此仍需 LGAG 选择后再融合。
         x1 = self.lgag1(g=d1, x=skips[2])
+        if self.lorf1 is not None:
+            x1 = self.lorf1(x1)
 
         # Additive aggregation 1
         # 相加后 d1 保持 (B,C1,H/4,W/4)。

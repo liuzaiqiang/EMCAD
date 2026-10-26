@@ -103,6 +103,7 @@ def build_model(args, pretrain):
         caa_mode=args.caa_mode,
         # 内容门控残差初始强度；关闭 CAA 时 EUCB 沿用基础模型结构。
         caa_residual_scale=args.caa_residual_scale,
+        use_lorf=args.use_lorf,
     )
 
 

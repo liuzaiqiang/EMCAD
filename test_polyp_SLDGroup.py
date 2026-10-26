@@ -252,7 +252,7 @@ if __name__ == '__main__':
     # 是否按彩色图读取；该参数未声明 type/action，命令行显式传值会成为字符串。
     parser.add_argument('--color_image', default=True)
     # 息肉 prepared data 根目录。
-    parser.add_argument('--test_path', type=str, default='../data/polyp/target/')
+    parser.add_argument('--test_path', type=str, default='../../data/polyp/target/')
     # 解析命令行。
     opt = parser.parse_args()
 
