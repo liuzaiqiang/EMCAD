@@ -30,6 +30,7 @@ from tqdm import tqdm
 # Project-specific imports
 # EMCADNet 封装编码器、EMCAD 解码器和四个二分类分割头。
 from lib.networks import EMCADNet
+from lib.data_paths import project_data_path
 # get_loader 配对 images/masks，训练尺寸归一化，并在测试时返回原始尺寸与文件名。
 from utils.dataloader_polyp import get_loader
 # medpy 的 hd95 计算预测边界与真值边界间对称 95% Hausdorff 距离。
@@ -252,7 +253,7 @@ if __name__ == '__main__':
     # 是否按彩色图读取；该参数未声明 type/action，命令行显式传值会成为字符串。
     parser.add_argument('--color_image', default=True)
     # 息肉 prepared data 根目录。
-    parser.add_argument('--test_path', type=str, default='../data/polyp/target/')
+    parser.add_argument('--test_path', type=str, default=project_data_path('polyp', 'target'))
     # 解析命令行。
     opt = parser.parse_args()
 

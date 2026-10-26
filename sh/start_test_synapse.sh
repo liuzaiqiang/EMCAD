@@ -28,8 +28,8 @@ export CUDA_VISIBLE_DEVICES="${CUDA_DEVICE:-0}"
 
 # Synapse 测试必须使用与训练一致的模型配置；启动时从 best.pth 同目录读取训练配置。
 # VOLUME_PATH 和 LIST_DIR 可在调用脚本时覆盖，用于指向服务器实际存放的完整病例及划分列表。
-VOLUME_PATH="${VOLUME_PATH:-${PROJECT_DIR}/../data/Synapse/test_vol_h5}"
-LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../data/Synapse/lists/lists_Synapse}"
+VOLUME_PATH="${VOLUME_PATH:-${PROJECT_DIR}/../../data/Synapse/test_vol_h5}"
+LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../../data/Synapse/lists/lists_Synapse}"
 DATASET="Synapse"
 
 # 默认在Synapse对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。

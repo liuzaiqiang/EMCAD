@@ -1,5 +1,8 @@
 # os 用于遍历原始数据目录、拼接文件路径以及创建输出目录。
 import os
+from pathlib import Path
+
+DATA_ROOT = Path(__file__).resolve().parents[3] / 'data' / 'Synapse'
 # shutil 在当前脚本中未被调用；保留原始导入，不改变脚本依赖关系。
 import shutil
 # time() 用于统计从开始处理到当前病例所消耗的时间。
@@ -25,19 +28,19 @@ for split in splits:
     # 训练划分使用 Synapse TrainSet，并生成供二维训练加载器读取的 NPZ 文件。
     if (split == 'train'):
         # 原始训练 CT 的 NIfTI 文件目录。
-        ct_path = '../data/synapse/Abdomen/RawData/TrainSet/img'  # set your path to your trainset directory
+        ct_path = str(DATA_ROOT / 'Abdomen/RawData/TrainSet/img')  # set your path to your trainset directory
         # 与训练 CT 一一对应的器官分割标签目录。
-        seg_path = '../data/synapse/Abdomen/RawData/TrainSet/label'
+        seg_path = str(DATA_ROOT / 'Abdomen/RawData/TrainSet/label')
         # 每个轴向切片保存为一个独立 .npz 文件的目标目录。
-        save_path = '../data/synapse/train_npz_new/'
+        save_path = str(DATA_ROOT / 'train_npz_new')
     # 测试划分保留病例的深度维度，以便按体数据统计 Dice、HD95 等指标。
     else:
-        # 原始测试 CT 目录；注意这里相对路径与上面的训练路径起点不同，这是原代码约定。
-        ct_path = './data/synapse/Abdomen/RawData/TestSet/img'  # set your path to your testset directory
+        # 原始测试 CT 目录；与训练输入共用项目上上级的 data 根目录。
+        ct_path = str(DATA_ROOT / 'Abdomen/RawData/TestSet/img')  # set your path to your testset directory
         # 原始测试标签目录。
-        seg_path = './data/synapse/Abdomen/RawData/TestSet/label'
+        seg_path = str(DATA_ROOT / 'Abdomen/RawData/TestSet/label')
         # 每个测试病例保存为一个 .npy.h5 文件的目标目录。
-        save_path = './data/synapse/test_vol_h5_new/'
+        save_path = str(DATA_ROOT / 'test_vol_h5_new')
 
     # 首次处理时创建当前划分的输出目录。
     if os.path.exists(save_path) is False:

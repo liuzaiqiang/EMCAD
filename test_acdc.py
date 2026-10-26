@@ -30,6 +30,7 @@ import numpy as np
 import torch
 import time
 from lib.benchmarking import InferenceBenchmark, log_environment, log_json, reset_peak_memory, synchronize
+from lib.data_paths import project_data_path
 # DataLoader 每次提供一个完整病例。
 from torch.utils.data import DataLoader
 # tqdm 显示病例级测试进度。
@@ -69,9 +70,9 @@ def parse_args():
     # 必填模型权重路径；通常使用训练验证集选择出的 best.pth。
     parser.add_argument("--checkpoint", required=True)
     # ACDC 根目录，测试时要求存在 test/。
-    parser.add_argument("--root_path", default="../data/ACDC")
+    parser.add_argument("--root_path", default=project_data_path("ACDC"))
     # 划分清单目录，测试时要求 test.txt。
-    parser.add_argument("--list_dir", default="../data/ACDC/lists_ACDC")
+    parser.add_argument("--list_dir", default=project_data_path("ACDC", "lists_ACDC"))
     # 预测/日志目录；None 时放在 checkpoint 同级 predictions/。
     parser.add_argument("--output_dir", default=None)
     # 指标 CSV 路径；None 时放在 checkpoint 同级 test_metrics.csv。
@@ -96,6 +97,7 @@ def parse_args():
     parser.add_argument("--caa_mode", default="off",
                         choices=["off", "aa_only", "content_only", "caa"])
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_semantic_aligned_skip", type=int, choices=[0, 1], default=0)
 
     # 每张切片进入模型前缩放到的正方形尺寸，须与训练设置相符。
     parser.add_argument("--img_size", type=int, default=256)
@@ -139,13 +141,14 @@ def restore_checkpoint_config(args):
         "concatenation": "--concatenation",
         "caa_mode": "--caa_mode",
         "caa_residual_scale": "--caa_residual_scale",
+        "use_semantic_aligned_skip": "--use_semantic_aligned_skip",
         "img_size": "--img_size",
     }
     for field, option in options.items():
-        if field not in config:
+        if field not in config and field != "use_semantic_aligned_skip":
             continue
         requested = getattr(args, field)
-        configured = config[field]
+        configured = config.get(field, 0)
         explicit = any(
             token == option or token.startswith(option + "=")
             for token in sys.argv[1:]

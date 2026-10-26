@@ -20,6 +20,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 # pathlib.Path 提供跨平台路径处理。
 from pathlib import Path
+from lib.data_paths import project_data_path
 
 # OpenCV负责实际解码PNG、读取灰度mask和写出合并mask。
 import cv2
@@ -1272,7 +1273,7 @@ def parse_args():
     parser.add_argument(
         "--output_root",
         default=(
-            "../data/busi/target/BUSI"
+            project_data_path("busi", "target", "BUSI")
         ),
     )
     # seed必须解析为整数，用于重复组的确定性伪随机排序。

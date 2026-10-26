@@ -104,9 +104,9 @@ Polyp、ISIC 和 BUSI 测试启动器默认从 checkpoint 同目录 `config.json
 
 DSB18 开启 `MERGE_INSTANCE_MASKS=1` 后，也接受 `masks/<stem>/<instance-mask>.<ext>`：同一目录内所有非零实例像素取并集。该目标是“任意细胞前景”的语义二分类，不保留实例编号或实例边界。**如果要严格评估实例分割指标，当前单通道二分类指标流程不适用。**
 
-EM 的具体本地文件结构和掩膜编码没有出现在当前 checkout，因此本次按同 stem 的一图一掩膜（灰度 0/1、0/255 或常见 TIFF/PNG）接入；代码不会把未知原始目录自动转换成上述结构，也不会创建划分。DSB18 原始数据也不在本机，代码只支持已经整理成 `images/<stem>.<ext>` 与 `masks/<stem>/<instance>.<ext>`（或合并后同 stem 文件）的形式。论文采用 DSB18、EM 的 80:10:10 划分；服务器上的实际目录、预处理、图像/患者分组及清单必须核实与论文协议的对应关系，不能仅凭目录名宣称复现。当前 checkout 的 `../data/polyp/target` 存在五个息肉数据集目录，但没有本地 cell 数据。
+EM 的具体本地文件结构和掩膜编码没有出现在当前 checkout，因此本次按同 stem 的一图一掩膜（灰度 0/1、0/255 或常见 TIFF/PNG）接入；代码不会把未知原始目录自动转换成上述结构，也不会创建划分。DSB18 原始数据也不在本机，代码只支持已经整理成 `images/<stem>.<ext>` 与 `masks/<stem>/<instance>.<ext>`（或合并后同 stem 文件）的形式。论文采用 DSB18、EM 的 80:10:10 划分；服务器上的实际目录、预处理、图像/患者分组及清单必须核实与论文协议的对应关系，不能仅凭目录名宣称复现。当前默认数据根统一为项目上上级的 `../../data`；各数据集子目录需在该位置准备好。
 
-ACDC 的本地清单目录已核实为 `../data/ACDC/lists_ACDC`，含 `train.txt`、`valid.txt`、`test.txt`；训练/测试脚本默认统一到该目录。ISIC 与 BUSI 继续由已有专用加载器校验 manifest。所有新入口均要求复用已经确定的数据划分，不会调用 split 生成器。
+ACDC 训练/测试脚本默认使用 `../../data/ACDC/lists_ACDC` 下的 `train.txt`、`valid.txt`、`test.txt`。ISIC 与 BUSI 继续由已有专用加载器校验 manifest。所有新入口均要求复用已经确定的数据划分，不会调用 split 生成器。
 
 ## 验证状态和待知情事项
 

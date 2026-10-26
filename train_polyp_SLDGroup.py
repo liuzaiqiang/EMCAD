@@ -37,6 +37,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 # Project-specific imports
 # EMCADNet 封装编码器、解码器与四个二分类输出头。
 from lib.networks import EMCADNet
+from lib.data_paths import project_data_path
 # get_loader 配对图像/掩膜，并按 train/test 模式返回不同批结构。
 from utils.dataloader_polyp import get_loader as get_loader
 # clip_gradient 做逐参数梯度截断；adjust_lr 是旧阶梯衰减；AvgMeter 记录 loss；cal_params_flops 统计复杂度。
@@ -383,9 +384,9 @@ if __name__ == '__main__':
     # 是否做 loader 数据增强；同样无 type/action。
     parser.add_argument('--augmentation', default=True)
     # 训练划分根目录，默认由上方硬编码 dataset_name 生成。
-    parser.add_argument('--train_path', type=str, default=f'../data/polyp/target/{dataset_name}/train/')
+    parser.add_argument('--train_path', type=str, default=project_data_path('polyp', 'target', dataset_name, 'train'))
     # 数据集根目录，test() 再追加 val/test。
-    parser.add_argument('--test_path', type=str, default=f'../data/polyp/target/{dataset_name}/')
+    parser.add_argument('--test_path', type=str, default=project_data_path('polyp', 'target', dataset_name))
     # 单 run 权重目录会在循环中覆盖此初始空字符串。
     parser.add_argument('--train_save', type=str, default='')
     # 解析全部参数。

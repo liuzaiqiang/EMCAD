@@ -2,6 +2,7 @@
 import argparse
 # os 用于判断文件是否存在以及构造跨平台路径。
 import os
+from lib.data_paths import project_data_path
 # re 用于解析验证集切片文件名中的病例、心动周期和切片序号。
 import re
 # defaultdict(int) 自动把首次出现的验证病例分组计数初始化为 0。
@@ -56,9 +57,9 @@ def main():
     # 创建命令行解析器；不改数据，只执行只读一致性检查。
     parser = argparse.ArgumentParser()
     # root_path 下应包含 train、valid、test 三个数据子目录。
-    parser.add_argument("--root_path", default="../data/ACDC")
+    parser.add_argument("--root_path", default=project_data_path("ACDC"))
     # list_dir 下应包含 train.txt、valid.txt、test.txt。
-    parser.add_argument("--list_dir", default="../data/ACDC/lists/lists_ACDC")
+    parser.add_argument("--list_dir", default=project_data_path("ACDC", "lists_ACDC"))
     # 解析用户传入参数，未提供时使用上面的项目默认值。
     args = parser.parse_args()
 

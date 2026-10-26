@@ -9,6 +9,7 @@ from datetime import datetime
 # Path 构造数据集、清单和运行目录。
 from pathlib import Path
 from lib.experiment_paths import make_experiment_dir
+from lib.data_paths import project_data_path
 
 # ISIC 训练复用 train_polyp 的模型、损失、优化器和完整训练循环。
 import train_polyp as _base
@@ -61,7 +62,7 @@ def _parse_args():
     # 用户未显式指定数据根时使用 ISIC 准备目录。
     if not _option_was_given("--data_root"):
         # 相对路径从通常项目根工作目录解析。
-        args.data_root = "../data/isic/target"
+        args.data_root = project_data_path("isic", "target")
 
     # 用户未指定版本时默认训练 ISIC2018。
     if not _option_was_given("--dataset_name"):

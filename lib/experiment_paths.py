@@ -55,6 +55,8 @@ def make_experiment_dir(args, family, output_root=None):
         ("caa", _value(args, "caa_mode")),
         ("seed", _value(args, "seed")),
     ]
+    if int(_value(args, "use_semantic_aligned_skip", 0)):
+        values.append(("semantic_skip", 1))
     parameter_parts = [
         Path(_safe_component(label) + "_" + _safe_component(value))
         for label, value in values

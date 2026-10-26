@@ -54,6 +54,7 @@ from utils.polyp_utils import (
 )
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
+from lib.data_paths import project_data_path
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
 
 
@@ -70,7 +71,7 @@ def parse_args():
         # 选项名。
         "--data_root",
         # 默认路径。
-        default="../data/polyp/target",
+        default=project_data_path("polyp", "target"),
     )
     # 当前训练的具体数据集子目录。
     parser.add_argument(
@@ -175,6 +176,7 @@ def parse_args():
     # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_semantic_aligned_skip", type=int, choices=[0, 1], default=0)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 

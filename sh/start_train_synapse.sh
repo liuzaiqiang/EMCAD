@@ -4,6 +4,9 @@
 # -e 遇到未处理的非零退出码即停止，-u 拒绝未定义变量，pipefail 让管道任一环节失败都算失败。
 set -euo pipefail
 
+#210服务器
+CONDA_BASE="/home/lzq/lzqEnvs/miniconda3"
+CONDA_ENV_PREFIX="/home/lzq/lzqEnvs/miniconda3/envs/sld_emcad"
 
 # CONDA_BASE="/base/mambaforge"
 # CONDA_ENV_PREFIX="/root/shared-nvme/lzq_conda/envs/sld_emcad"
@@ -14,6 +17,13 @@ conda activate "${CONDA_ENV_PREFIX}"
 
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_PATH="${ROOT_PATH:-${PROJECT_DIR}/../../data/Synapse/train_npz}"
+VOLUME_PATH="${VOLUME_PATH:-${PROJECT_DIR}/../../data/Synapse/test_vol_h5}"
+LIST_DIR="${LIST_DIR:-${PROJECT_DIR}/../../data/Synapse/lists/lists_Synapse}"
+test -d "${ROOT_PATH}" || { echo "[ERROR] ROOT_PATH not found: ${ROOT_PATH}"; exit 1; }
+test -d "${VOLUME_PATH}" || { echo "[ERROR] VOLUME_PATH not found: ${VOLUME_PATH}"; exit 1; }
+test -f "${LIST_DIR}/train.txt" || { echo "[ERROR] train list not found: ${LIST_DIR}/train.txt"; exit 1; }
+test -f "${LIST_DIR}/test_vol.txt" || { echo "[ERROR] test list not found: ${LIST_DIR}/test_vol.txt"; exit 1; }
 
 
 cd "${PROJECT_DIR}"
@@ -28,7 +38,7 @@ N_GPU="${N_GPU:-1}"
 NUM_WORKERS=8
 
 SEED="${SEED:-2222}"
-MAX_EPOCHS=400
+MAX_EPOCHS=300
 DATASET="Synapse"
 IMG_SIZE=224
 BATCH_SIZE=16
@@ -93,6 +103,10 @@ PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
 # CAA 开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
 USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
+USE_SEMANTIC_ALIGNED_SKIP="${USE_SEMANTIC_ALIGNED_SKIP:-1}"
+
+
+[[ "${USE_SEMANTIC_ALIGNED_SKIP}" =~ ^[01]$ ]] || { echo "[ERROR] USE_SEMANTIC_ALIGNED_SKIP must be 0 or 1"; exit 1; }
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
@@ -106,6 +120,9 @@ PARAM_NAMES=(
   CONDA_BASE
   CONDA_ENV_PREFIX
   PROJECT_DIR
+  ROOT_PATH
+  VOLUME_PATH
+  LIST_DIR
   LOG_DIR
   CUDA_VISIBLE_DEVICES
   SEED
@@ -133,6 +150,7 @@ PARAM_NAMES=(
   PID_FILE
   NUM_WORKERS
   USE_CONTENT_AWARE_ANTIALIAS
+  USE_SEMANTIC_ALIGNED_SKIP
   CAA_MODE
   CAA_RESIDUAL_SCALE
 )
@@ -150,6 +168,9 @@ PARAM_NAMES=(
 # 参数列表和日志重定向必须属于同一条 shell 命令；最后一个参数行用反斜杠续接重定向行，
 # 这样 $! 才会记录真正运行 Python 训练的后台进程，且 stdout/stderr 会进入本次训练日志。
 nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
+  --root_path "${ROOT_PATH}" \
+  --volume_path "${VOLUME_PATH}" \
+  --list_dir "${LIST_DIR}" \
   --dataset "${DATASET}" \
   --img_size "${IMG_SIZE}" \
   --batch_size "${BATCH_SIZE}" \
@@ -169,6 +190,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --use_semantic_aligned_skip "${USE_SEMANTIC_ALIGNED_SKIP}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

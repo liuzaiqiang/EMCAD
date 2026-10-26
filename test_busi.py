@@ -8,6 +8,7 @@ import shutil
 import sys
 # Path 解析检查点、配置、数据和输出路径。
 from pathlib import Path
+from lib.data_paths import project_data_path
 
 # BUSI 复用 test_polyp 的模型、推理、二分类指标和结果保存流程。
 import test_polyp as _base
@@ -90,6 +91,7 @@ ARCHITECTURE_OPTIONS = {
     ),
     "caa_mode": "--caa_mode",
     "caa_residual_scale": "--caa_residual_scale",
+    "use_semantic_aligned_skip": "--use_semantic_aligned_skip",
     # 输入尺寸。
     "img_size": "--img_size",
     # 灰度模式。
@@ -172,7 +174,7 @@ def _parse_args():
         # 设置默认路径。
         args.data_root = (
             # 准备数据根。
-            "../data/busi/target"
+            project_data_path("busi", "target")
         )
 
     # 检查点转绝对 Path。
@@ -259,7 +261,7 @@ def _parse_args():
             option,
     ) in ARCHITECTURE_OPTIONS.items():
         # 缺字段无法确定 state_dict shape。
-        if field not in config and field not in {"caa_mode", "caa_residual_scale"}:
+        if field not in config and field not in {"caa_mode", "caa_residual_scale", "use_semantic_aligned_skip"}:
             # 报告字段。
             raise RuntimeError(
                 # 错误正文。
@@ -274,7 +276,7 @@ def _parse_args():
         # 规范保存值。
         configured = _normalized(
             # config值。
-            config.get(field, "off" if field == "caa_mode" else 0.1)
+            config.get(field, "off" if field == "caa_mode" else 0 if field == "use_semantic_aligned_skip" else 0.1)
         )
         # 规范当前命令行解析值。
         current = _normalized(

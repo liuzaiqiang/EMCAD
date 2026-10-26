@@ -11,6 +11,7 @@ from datetime import datetime
 # Path 构造 BUSI 数据和输出目录。
 from pathlib import Path
 from lib.experiment_paths import make_experiment_dir
+from lib.data_paths import project_data_path
 
 # BUSI 复用 train_polyp 的 EMCAD 模型、二分类损失和训练循环。
 import train_polyp as _base
@@ -126,7 +127,7 @@ def _parse_args():
         # 设置默认值。
         args.data_root = (
             # 目标数据根。
-            "../data/busi/target"
+            project_data_path("busi", "target")
         )
 
     # 未指定名称时固定 BUSI。

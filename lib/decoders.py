@@ -943,15 +943,44 @@ class SAB(nn.Module):
 #   EUCB 的核固定为 3、激活固定采用其默认 ReLU；CAB/LGAG 的激活也使用各类默认 ReLU；
 #   num_classes、encoder、pretrain 都不属于 EMCAD，由 lib/networks.py 管理。
 # ==================================================================================================
+class SemanticAlignedResidualSkip(nn.Module):
+    """Use decoder semantics to make a small, learnable correction to an encoder skip."""
+
+    def __init__(self, channels):
+        super().__init__()
+        hidden = max(16, channels // 4)
+        self.skip_projection = nn.Conv2d(channels, hidden, 1, bias=False)
+        self.decoder_projection = nn.Conv2d(channels, hidden, 1, bias=False)
+        self.refine = nn.Sequential(
+            nn.ReLU(inplace=False),
+            nn.Conv2d(hidden, hidden, 3, padding=1, groups=hidden, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, channels, 1, bias=True),
+        )
+        # At initialization the complete decoder is exactly the unmodified skip path.
+        nn.init.zeros_(self.refine[-1].weight)
+        nn.init.zeros_(self.refine[-1].bias)
+
+    def forward(self, decoder, skip):
+        mismatch = self.skip_projection(skip) - self.decoder_projection(decoder)
+        return skip + self.refine(mismatch)
+
+
 class EMCAD(nn.Module):
     # channels 按深到浅排列；PVTv2-B2 默认为 [512,320,128,64]。
     def __init__(self, channels=[512, 320, 128, 64], kernel_sizes=[1, 3, 5], expansion_factor=6, dw_parallel=True,
-                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1):
+                 add=True, lgag_ks=3, activation='relu6', caa_mode='off', caa_residual_scale=0.1,
+                 use_semantic_aligned_skip=False):
         # 此处默认 expansion_factor=6 只在直接调用 EMCAD() 且不传参数时生效；项目标准入口
         # EMCADNet(... expansion_factor=2) 会显式把 2 传到这里，所以训练脚本的实际默认值是 2。
         # channels、kernel_sizes 都只读取不修改；尽管写成可变 list 默认参数，当前实现不会原地污染它们。
         # 初始化基础模块。
         super(EMCAD, self).__init__()
+        self.use_semantic_aligned_skip = bool(use_semantic_aligned_skip)
+        if self.use_semantic_aligned_skip:
+            self.semantic_skip3 = SemanticAlignedResidualSkip(channels[1])
+            self.semantic_skip2 = SemanticAlignedResidualSkip(channels[2])
+            self.semantic_skip1 = SemanticAlignedResidualSkip(channels[3])
         # EUCB 固定使用 3x3 depth-wise convolution。
         # eucb_ks//2 在下面等于 1，所以 EUCB 内卷积保持尺寸；真正的 2 倍放大发生在 nn.Upsample。
         eucb_ks = 3  # kernel size for eucb
@@ -1040,7 +1069,8 @@ class EMCAD(nn.Module):
         # LGAG3
         # skips[0] 是编码器 x3；LGAG 输出被门控的 x3，通道和分辨率不变。
         # 关键点：LGAG(g=d3,x=skip) 用 d3 决定保留 skip 的哪些空间位置，但返回值内容来源仍是 skip。
-        x3 = self.lgag3(g=d3, x=skips[0])
+        skip3 = self.semantic_skip3(d3, skips[0]) if self.use_semantic_aligned_skip else skips[0]
+        x3 = self.lgag3(g=d3, x=skip3)
 
         # Additive aggregation 3
         # 解码特征与筛选后的 skip 逐元素相加，不采用通道拼接，因此 d3 仍为 C3。
@@ -1064,7 +1094,8 @@ class EMCAD(nn.Module):
         # LGAG2
         # 门控编码器 x2，输出保持 skips[1] 的 C2 通道。
         # x2 变量名在本函数内表示“门控后的第二级 skip”，不是编码器原始 x2 的原地改写。
-        x2 = self.lgag2(g=d2, x=skips[1])
+        skip2 = self.semantic_skip2(d2, skips[1]) if self.use_semantic_aligned_skip else skips[1]
+        x2 = self.lgag2(g=d2, x=skip2)
 
         # Additive aggregation 2
         # 与门控 skip 相加，形状保持 (B,C2,H/8,W/8)。
@@ -1087,7 +1118,8 @@ class EMCAD(nn.Module):
         # LGAG1
         # 门控最高分辨率编码器特征 x1。
         # x1 往往包含最丰富的边界/纹理，也最容易带入背景噪声，因此仍需 LGAG 选择后再融合。
-        x1 = self.lgag1(g=d1, x=skips[2])
+        skip1 = self.semantic_skip1(d1, skips[2]) if self.use_semantic_aligned_skip else skips[2]
+        x1 = self.lgag1(g=d1, x=skip1)
 
         # Additive aggregation 1
         # 相加后 d1 保持 (B,C1,H/4,W/4)。
