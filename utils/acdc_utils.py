@@ -70,6 +70,8 @@ def build_model(args, pretrain):
         # CAA 结构和残差初始尺度必须与训练 checkpoint 一致。
         caa_mode=args.caa_mode,
         caa_residual_scale=args.caa_residual_scale,
+        use_sdf=bool(getattr(args, "use_sdf", 0)),
+        sdf_residual_scale=getattr(args, "sdf_residual_scale", 0.1),
     )
 
 

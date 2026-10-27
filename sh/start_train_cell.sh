@@ -56,6 +56,8 @@ export INPUT_CHANNELS="${INPUT_CHANNELS:-3}"
 # 通用二分类启动器会把 N_GPU 传给 Python 的 --n_gpu；为 Cell 明确给出单 GPU 默认值，
 # 以免严格模式 set -u 因变量未定义而在创建训练进程前退出；多卡时可在命令前覆盖。
 export N_GPU="${N_GPU:-1}"
+export USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+export USE_SIGNED_DISTANCE_GEOMETRY="${USE_SIGNED_DISTANCE_GEOMETRY:-0}"
 
 # 在访问数据前检查通道数和掩膜合并开关，避免把非法值传入训练入口。
 [[ "${INPUT_CHANNELS}" == "1" || "${INPUT_CHANNELS}" == "3" ]] || {

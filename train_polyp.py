@@ -55,6 +55,7 @@ from utils.polyp_utils import (
 from lib.model_complexity import log_model_complexity
 from lib.experiment_paths import make_experiment_dir
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
+from lib.signed_distance import signed_distance_loss
 
 
 # 解析所有二分类训练参数；默认值对应 EMCAD Polyp 主实验口径。
@@ -175,6 +176,10 @@ def parse_args():
     # CAA 仅改变 EUCB 上采样；off 模式保留基础模型路径。
     parser.add_argument("--caa_mode", choices=["off", "aa_only", "content_only", "caa"], default="off")
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_sdf", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--sdf_loss_weight", type=float, default=0.1)
+    parser.add_argument("--sdf_radius", type=float, default=16)
+    parser.add_argument("--sdf_residual_scale", type=float, default=0.1)
     # DSB18 可用该开关把每张图像目录下的多个细胞实例掩膜并为前景。
     parser.add_argument("--merge_instance_masks", type=int, choices=[0, 1], default=0)
 
@@ -954,17 +959,24 @@ def main():
                 with autocast(
                         enabled=scaler.is_enabled()
                 ):
-                    outputs = model_outputs(
-                        model,
-                        scaled_images,
-                        mode="train",
-                    )
+                    if args.use_sdf:
+                        outputs, sdf_prediction = model(
+                            scaled_images, mode="train", return_sdf=True)
+                    else:
+                        outputs = model_outputs(
+                            model,
+                            scaled_images,
+                            mode="train",
+                        )
 
                     loss = supervised_structure_loss(
                         outputs,
                         scaled_masks,
                         args.supervision,
                     )
+                    if args.use_sdf:
+                        loss = loss + args.sdf_loss_weight * signed_distance_loss(
+                            sdf_prediction, scaled_masks, radius=args.sdf_radius)
                     # 仅非 p1 配置追加融合监督；p1 消融保持原始 loss 完全不变。
 
                 scaler.scale(loss).backward()

@@ -11,6 +11,7 @@ from lib.pvtv2 import pvt_v2_b0, pvt_v2_b1, pvt_v2_b2, pvt_v2_b3, pvt_v2_b4, pvt
 from lib.resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 # EMCAD 是论文提出的解码器，接收四级编码特征并逐级恢复空间分辨率。
 from lib.decoders import EMCAD
+from lib.signed_distance import SignedDistanceCalibration
 
 
 # ===========================================================
@@ -62,7 +63,7 @@ class EMCADNet(nn.Module):
     # num_classes 决定每个输出头的通道；其余参数控制 EMCAD 消融配置和编码器选择。
     def __init__(self, num_classes=1, kernel_sizes=[1, 3, 5], expansion_factor=2, dw_parallel=True, add=True, lgag_ks=3,
                  activation='relu', encoder='pvt_v2_b2', pretrain=True, pretrained_dir='./pretrained_pth/pvt/',
-                 caa_mode='off', caa_residual_scale=0.1):
+                 caa_mode='off', caa_residual_scale=0.1, use_sdf=False, sdf_residual_scale=0.1):
         # 初始化 nn.Module，使后续赋值的子模块和参数被 PyTorch 正确注册。
         super(EMCADNet, self).__init__()
         # conv block to convert single channel to 3 channels
@@ -217,6 +218,10 @@ class EMCADNet(nn.Module):
         self.out_head2 = nn.Conv2d(channels[2], num_classes, 1)
         # 最高分辨率 d1 输出头：channels[3] -> K。
         self.out_head1 = nn.Conv2d(channels[3], num_classes, 1)
+        self.use_sdf = bool(use_sdf)
+        if self.use_sdf:
+            self.sdf_calibration = SignedDistanceCalibration(
+                channels[3], num_classes, residual_scale=sdf_residual_scale)
 
     # ------------------------------ forward 契约 ------------------------------
     # 输入：四维 PyTorch 图像张量 x=[B,C,H,W]。代码专门适配 C=1，骨干原生适配 C=3。
@@ -226,7 +231,7 @@ class EMCADNet(nn.Module):
     # 调用 model.eval()、torch.no_grad() 以及选择最终预测头，仍由测试脚本负责。
     # -------------------------------------------------------------------------
     # 输入 x 约定为 (B,C,H,W)；mode 当前不改变返回值，训练策略由外部 trainer 决定。
-    def forward(self, x, mode='test'):
+    def forward(self, x, mode='test', return_sdf=False):
         # 只在 C=1 时使用可学习适配器；已经是 RGB/C=3 时直接送入编码器。
         if x.size()[1] == 1:
             # (B,1,H,W) -> (B,3,H,W)，空间尺寸保持不变。
@@ -253,7 +258,13 @@ class EMCADNet(nn.Module):
         # d2 位于 H/8，产生 p2。
         p2 = self.out_head2(dec_outs[2])
         # d1 位于 H/4，产生代码命名的 p1；它是实际推理采用的最高分辨率解码头。
-        p1 = self.out_head1(dec_outs[3])
+        if self.use_sdf:
+            final_feature, sdf_prediction = self.sdf_calibration(dec_outs[3])
+            p1 = self.out_head1(final_feature)
+        else:
+            if return_sdf:
+                raise ValueError('return_sdf requires use_sdf=True')
+            p1 = self.out_head1(dec_outs[3])
 
         # 这里使用 scale_factor 而非显式 size=x.shape[-2:]，所以代码假设输入尺寸经过四次下采样后能被这些倍率精确还原。
         # 352 可被 32 整除，四个输出都会严格回到 352x352；若 H/W 不是 32 的合适倍数，卷积取整可能使放大后尺寸偏离原图。
@@ -269,6 +280,8 @@ class EMCADNet(nn.Module):
         p1 = F.interpolate(p1, scale_factor=4, mode='bilinear')
 
         # 论文第5页 Sec.3.3 把最后解码阶段称为 p4；本代码按反方向编号，外部推理实际取返回列表 P[-1]，即这里的 p1。
+        if return_sdf:
+            return [p4, p3, p2, p1], sdf_prediction
         if mode == 'test':
             # return 返回的是列表本身，不会复制四个张量；张量仍保留其 autograd 关系，除非外层使用 no_grad 或 detach。
             # 测试模式仍返回全部四个 logits，不在模型内部执行 sigmoid、softmax 或多头求和。

@@ -55,6 +55,13 @@ def make_experiment_dir(args, family, output_root=None):
         ("caa", _value(args, "caa_mode")),
         ("seed", _value(args, "seed")),
     ]
+    if _value(args, "use_sdf", 0):
+        values.extend([
+            ("sdf", 1),
+            ("sdf_loss_weight", _value(args, "sdf_loss_weight")),
+            ("sdf_radius", _value(args, "sdf_radius")),
+            ("sdf_residual_scale", _value(args, "sdf_residual_scale")),
+        ])
     parameter_parts = [
         Path(_safe_component(label) + "_" + _safe_component(value))
         for label, value in values

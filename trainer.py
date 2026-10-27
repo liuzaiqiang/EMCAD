@@ -39,6 +39,7 @@ from tensorboardX import SummaryWriter
 from lib.benchmarking import log_environment, log_json, peak_memory_mb, reset_peak_memory, synchronize
 # CrossEntropyLoss 对每个像素执行 9 类分类，输入 logits、目标为整数类别编号。
 from torch.nn.modules.loss import CrossEntropyLoss
+from lib.signed_distance import signed_distance_loss
 # DataLoader 负责批处理、打乱、并行读取与 pin memory。
 from torch.utils.data import DataLoader
 # transforms.Compose 串联训练样本变换；当前只有 RandomGenerator。
@@ -227,7 +228,10 @@ def trainer_synapse(args, model, snapshot_path):
             # 训练模式前向：EMCADNet 返回由粗到细的四个全分辨率 logits，均为 [B,9,224,224]。
             # 论文第 3.2/3.3 节把它们记作多阶段分割输出；这里变量名P表示 prediction list。
             # 注意，mode='train' 只是你这个 EMCAD forward() 的参数，不能替代 PyTorch 的 model.train()。真正决定 BatchNorm、Dropout 是否处于训练状态的是模型的 training 属性。
-            P = model(image_batch, mode='train')
+            if args.use_sdf:
+                P, sdf_prediction = model(image_batch, mode='train', return_sdf=True)
+            else:
+                P = model(image_batch, mode='train')
             # 兼容只返回单张量的其他模型：统一包装为列表，后续监督代码只处理 list。
             # 如果模型只返回一个 Tensor，就把它包装为只有一个元素的列表。这样后面统一使用 P[index]，不用为单输出模型和多输出模型各写一套逻辑。
             if not isinstance(P, list):
@@ -302,6 +306,9 @@ def trainer_synapse(args, model, snapshot_path):
             # 清除上一个 batch 残留梯度；默认把梯度张量写成 0。
             optimizer.zero_grad()
             # 从总损失沿 15/4/1 条监督路径反向传播，梯度最终汇合到共享编码器和解码器参数。同一个输出若出现在多个组合中，会收到多个路径的梯度贡献；
+            if args.use_sdf:
+                loss = loss + args.sdf_loss_weight * signed_distance_loss(
+                    sdf_prediction, label_batch, radius=args.sdf_radius)
             loss.backward()
             # AdamW 根据当前梯度、学习率和权重衰减更新一次全部可训练参数。
             optimizer.step()

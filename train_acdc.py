@@ -39,6 +39,7 @@ from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 # 多类交叉熵处理每像素 4 类分类。
 from torch.nn.modules.loss import CrossEntropyLoss
+from lib.signed_distance import signed_distance_loss
 # DataLoader 负责切片批处理和病例迭代。
 from torch.utils.data import DataLoader
 # Compose 串联 ACDC 的训练增强/缩放变换。
@@ -112,6 +113,10 @@ def parse_args():
     parser.add_argument("--caa_mode", default="off",
                         choices=["off", "aa_only", "content_only", "caa"])
     parser.add_argument("--caa_residual_scale", type=float, default=0.1)
+    parser.add_argument("--use_sdf", type=int, choices=[0, 1], default=0)
+    parser.add_argument("--sdf_loss_weight", type=float, default=0.1)
+    parser.add_argument("--sdf_radius", type=float, default=16)
+    parser.add_argument("--sdf_residual_scale", type=float, default=0.1)
 
     # 限制监督策略只能取三个已实现值，非法字符串会由 argparse 直接拒绝。
     parser.add_argument(
@@ -442,7 +447,10 @@ def main():
             # 进入自动混合精度上下文；scaler 未启用时等同普通前向。
             with autocast(enabled=scaler.is_enabled()):
                 # EMCAD 训练前向并统一转成 list；典型 4 个输出均为 [B,4,224,224] logits。
-                outputs = model_outputs(model, images, mode="train")
+                if args.use_sdf:
+                    outputs, sdf_prediction = model(images, mode="train", return_sdf=True)
+                else:
+                    outputs = model_outputs(model, images, mode="train")
                 # 按监督策略组合输出，每组计算 0.3*CE+0.7*Dice，再把所有组相加。
                 loss = supervised_loss(
                     # 四级 logits 列表。
@@ -457,6 +465,9 @@ def main():
                     dice_loss=dice_loss,
                     # 损失调用结束，loss 为带梯度的标量 Tensor。
                 )
+                if args.use_sdf:
+                    loss = loss + args.sdf_loss_weight * signed_distance_loss(
+                        sdf_prediction, labels, radius=args.sdf_radius)
             # AMP 时先按缩放因子放大 loss 再反向，降低 float16 梯度下溢风险；普通模式不缩放。
             scaler.scale(loss).backward()
             # 若本步梯度有效，scaler.step 内部反缩放并调用 optimizer.step；溢出时可跳过更新。
