@@ -61,7 +61,7 @@ def parse_args():
         # 选项名。
         "--data_root",
         # 目录下预期包含 ClinicDB、Kvasir 等数据集子目录。
-        default="../data/polyp/target",
+        default="../../data/polyp/target",
     )
     # 当前要评估的数据集子目录名。
     parser.add_argument(

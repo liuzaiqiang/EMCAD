@@ -1272,7 +1272,7 @@ def parse_args():
     parser.add_argument(
         "--output_root",
         default=(
-            "../data/busi/target/BUSI"
+            "../../data/busi/target/BUSI"
         ),
     )
     # seed必须解析为整数，用于重复组的确定性伪随机排序。
