@@ -45,9 +45,9 @@ def data_split(src_list):
 # 只有直接执行该文件时才运行批量格式转换；被其他模块导入时不会触碰磁盘数据。
 if __name__ == '__main__':
     # 原始 TIFF 掩膜目录；这是示例相对路径，需要从项目预期工作目录运行。
-    src_dir = '../Dataset/train_dataset/CVC-EndoSceneStill/CVC-612/test_split/masks_tif'
+    src_dir = '../../Dataset/train_dataset/CVC-EndoSceneStill/CVC-612/test_split/masks_tif'
     # 转换后 PNG 掩膜的目标目录。
-    dst_dir = '../Dataset/train_dataset/CVC-EndoSceneStill/CVC-612/test_split/masks'
+    dst_dir = '../../Dataset/train_dataset/CVC-EndoSceneStill/CVC-612/test_split/masks'
 
     # 若目标目录不存在则创建；exist_ok=True 允许目录已存在。
     os.makedirs(dst_dir, exist_ok=True)

@@ -99,7 +99,7 @@ def _parse_args():
     # 未指定数据根时使用 ISIC 目录。
     if not _option_was_given("--data_root"):
         # 设置默认路径。
-        args.data_root = "../data/isic/target"
+        args.data_root = "../../data/isic/target"
 
     # 把检查点转换成绝对 Path。
     checkpoint = Path(

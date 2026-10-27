@@ -383,9 +383,9 @@ if __name__ == '__main__':
     # 是否做 loader 数据增强；同样无 type/action。
     parser.add_argument('--augmentation', default=True)
     # 训练划分根目录，默认由上方硬编码 dataset_name 生成。
-    parser.add_argument('--train_path', type=str, default=f'../data/polyp/target/{dataset_name}/train/')
+    parser.add_argument('--train_path', type=str, default=f'../../data/polyp/target/{dataset_name}/train/')
     # 数据集根目录，test() 再追加 val/test。
-    parser.add_argument('--test_path', type=str, default=f'../data/polyp/target/{dataset_name}/')
+    parser.add_argument('--test_path', type=str, default=f'../../data/polyp/target/{dataset_name}/')
     # 单 run 权重目录会在循环中覆盖此初始空字符串。
     parser.add_argument('--train_save', type=str, default='')
     # 解析全部参数。
