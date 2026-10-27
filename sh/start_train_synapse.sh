@@ -93,6 +93,7 @@ PID_FILE="${LOG_DIR}/${RUN_ID}.pid"
 
 # CAA 开关：0 使用基础 EUCB 上采样；1 使用原有内容感知抗混叠实现。
 USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-0}"
+USE_PROGRESSIVE_DEEP_SEMANTIC="${USE_PROGRESSIVE_DEEP_SEMANTIC:-1}"
 
 CAA_RESIDUAL_SCALE="${CAA_RESIDUAL_SCALE:-0.1}"
 
@@ -100,6 +101,10 @@ case "${USE_CONTENT_AWARE_ANTIALIAS}" in
   0) CAA_MODE="off" ;;
   1) CAA_MODE="caa" ;;
   *) echo "[ERROR] USE_CONTENT_AWARE_ANTIALIAS must be 0 or 1"; exit 1 ;;
+esac
+case "${USE_PROGRESSIVE_DEEP_SEMANTIC}" in
+  0|1) ;;
+  *) echo "[ERROR] USE_PROGRESSIVE_DEEP_SEMANTIC must be 0 or 1"; exit 1 ;;
 esac
 
 PARAM_NAMES=(
@@ -133,6 +138,7 @@ PARAM_NAMES=(
   PID_FILE
   NUM_WORKERS
   USE_CONTENT_AWARE_ANTIALIAS
+  USE_PROGRESSIVE_DEEP_SEMANTIC
   CAA_MODE
   CAA_RESIDUAL_SCALE
 )
@@ -169,6 +175,7 @@ nohup env RUN_ID="${RUN_ID}" python -u train_synapse.py \
   --deterministic "${DETERMINISTIC}" \
   --caa_mode "${CAA_MODE}" \
   --caa_residual_scale "${CAA_RESIDUAL_SCALE}" \
+  --use_progressive_deep_semantic "${USE_PROGRESSIVE_DEEP_SEMANTIC}" \
   >> "${LOG_FILE}" 2>&1 < /dev/null &
 
 

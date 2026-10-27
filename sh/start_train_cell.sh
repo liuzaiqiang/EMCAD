@@ -23,6 +23,8 @@ export DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/cell/target}"
 
 # 固定系列标签为 Cell，让训练日志和模型输出不会混入 Polyp 目录。
 export DATASET="Cell"
+export USE_CONTENT_AWARE_ANTIALIAS="${USE_CONTENT_AWARE_ANTIALIAS:-1}"
+export USE_PROGRESSIVE_DEEP_SEMANTIC="${USE_PROGRESSIVE_DEEP_SEMANTIC:-1}"
 
 # 允许一份启动器服务两套任务；未指定时默认 DSB18。
 export DATASET_NAME="${DATASET_NAME:-DSB18}"
