@@ -126,7 +126,7 @@ def _parse_args():
         # 设置默认值。
         args.data_root = (
             # 目标数据根。
-            "../data/busi/target"
+            "../../data/busi/target"
         )
 
     # 未指定名称时固定 BUSI。

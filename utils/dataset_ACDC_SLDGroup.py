@@ -150,7 +150,7 @@ class ACDCdataset(Dataset):
 #         if split not in {"valid", "test"}:  # 该类只允许读取验证 volume 或测试 volume。
 #             raise ValueError("split must be 'valid' or 'test'")  # 拒绝错误的数据划分。
 
-#         self.base_dir = base_dir  # 保存 ./data/ACDC 根目录。
+#         self.base_dir = base_dir  # 保存 ../../data/ACDC 根目录。
 #         self.split = split  # 保存当前划分名称。
 #         list_path = os.path.join(list_dir, split + ".txt")  # 构造 valid.txt 或 test.txt 路径。
 

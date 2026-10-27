@@ -48,7 +48,7 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 DEVICE="${DEVICE:-auto}"
 
 # DATA_ROOT 默认指向预处理后的 BUSI target 目录；CKPT 不设默认权重，必须由调用者明确提供。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/busi/target}"
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/busi/target}"
 # 默认在 BUSI 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 

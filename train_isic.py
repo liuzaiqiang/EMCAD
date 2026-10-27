@@ -61,7 +61,7 @@ def _parse_args():
     # 用户未显式指定数据根时使用 ISIC 准备目录。
     if not _option_was_given("--data_root"):
         # 相对路径从通常项目根工作目录解析。
-        args.data_root = "../data/isic/target"
+        args.data_root = "../../data/isic/target"
 
     # 用户未指定版本时默认训练 ISIC2018。
     if not _option_was_given("--dataset_name"):

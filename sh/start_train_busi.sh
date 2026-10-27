@@ -75,7 +75,7 @@ case "${USE_PIXEL_RELIABILITY_FUSION}" in
 esac
 
 # 数据、模型输出和PVT权重目录；prepared BUSI数据固定位于DATA_ROOT/BUSI。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/busi/target}"
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/busi/target}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth}"
 PRETRAINED_DIR="${PRETRAINED_DIR:-${PROJECT_DIR}/pretrained_pth/pvt}"
 

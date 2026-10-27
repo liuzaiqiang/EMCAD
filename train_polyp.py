@@ -70,7 +70,7 @@ def parse_args():
         # 选项名。
         "--data_root",
         # 默认路径。
-        default="../data/polyp/target",
+        default="../../data/polyp/target",
     )
     # 当前训练的具体数据集子目录。
     parser.add_argument(

@@ -162,7 +162,7 @@ IMAGE_MODE_ARGS=()
 if [[ "${INPUT_CHANNELS}" == "1" ]]; then IMAGE_MODE_ARGS+=(--grayscale); fi
 
 # 数据根目录应包含 <dataset>/{train,val}/{images,masks}；默认输出按 DATASET 隔离并可外部覆盖。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/polyp/target}"
 OUTPUT_DIR="${OUTPUT_DIR:-${PROJECT_DIR}/model_pth/${DATASET}}"
 PRETRAINED_DIR="${PRETRAINED_DIR:-${PROJECT_DIR}/pretrained_pth/pvt}"
 

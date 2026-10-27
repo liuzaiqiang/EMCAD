@@ -1268,11 +1268,11 @@ def parse_args():
         "--source_root",
         required=True,
     )
-    # 输出根目录可覆盖；默认值对应仓库外层data/busi/target/BUSI布局。
+    # 输出根目录可覆盖；默认值对应项目上上级 data/busi/target/BUSI 布局。
     parser.add_argument(
         "--output_root",
         default=(
-            "../data/busi/target/BUSI"
+            "../../data/busi/target/BUSI"
         ),
     )
     # seed必须解析为整数，用于重复组的确定性伪随机排序。

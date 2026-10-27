@@ -40,7 +40,7 @@ DETERMINISTIC="${DETERMINISTIC:-1}"
 DEVICE="${DEVICE:-auto}"
 
 # CKPT默认空，必须由调用者显式提供；DATA_ROOT指向prepared数据根。
-DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../data/polyp/target}"
+DATA_ROOT="${DATA_ROOT:-${PROJECT_DIR}/../../data/polyp/target}"
 # 默认在 Polyp 对应的训练输出目录中查找 best.pth；CKPT 非空时优先使用调用者明确指定的路径。
 CKPT="${CKPT:-}"
 
